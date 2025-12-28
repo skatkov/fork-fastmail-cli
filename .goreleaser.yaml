@@ -97,3 +97,18 @@ release:
     name: fastmail-cli
   prerelease: auto
   name_template: "v{{.Version}}"
+
+brews:
+  - name: fastmail-cli
+    repository:
+      owner: salmonumbrella
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/salmonumbrella/fastmail-cli"
+    description: "CLI for Fastmail API"
+    license: "MIT"
+    install: |
+      bin.install "fastmail"
+    test: |
+      system "#{bin}/fastmail", "--help"
