@@ -100,6 +100,7 @@ release:
 
 brews:
   - name: fastmail-cli
+    skip_upload: true
     repository:
       owner: salmonumbrella
       name: homebrew-tap
