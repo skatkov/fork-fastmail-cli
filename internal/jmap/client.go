@@ -549,7 +549,7 @@ func (c *Client) SetHTTPClient(httpClient *http.Client) {
 
 // DownloadBlob downloads a blob (attachment) by ID and returns a ReadCloser for the content.
 // The caller is responsible for closing the returned ReadCloser.
-// Download URL format: {downloadUrl}/{accountId}/{blobId}/{name}?accept={type}
+// Download URL is a template per RFC 8620: {accountId}, {blobId}, {name}, {type} placeholders.
 func (c *Client) DownloadBlob(ctx context.Context, blobID string) (io.ReadCloser, error) {
 	// Ensure we have a session
 	session, err := c.GetSession(ctx)
@@ -557,10 +557,13 @@ func (c *Client) DownloadBlob(ctx context.Context, blobID string) (io.ReadCloser
 		return nil, fmt.Errorf("getting session: %w", err)
 	}
 
-	// Build download URL
-	// Format: {downloadUrl}/{accountId}/{blobId}/{name}?accept={type}
-	// We use a generic name since we may not know the actual filename at this point
-	downloadURL := fmt.Sprintf("%s/%s/%s/attachment", session.DownloadURL, session.AccountID, blobID)
+	// Build download URL by replacing template placeholders (RFC 8620 / RFC 6570)
+	// Template format: https://.../{accountId}/{blobId}/{name}?type={type}
+	downloadURL := session.DownloadURL
+	downloadURL = strings.Replace(downloadURL, "{accountId}", session.AccountID, 1)
+	downloadURL = strings.Replace(downloadURL, "{blobId}", blobID, 1)
+	downloadURL = strings.Replace(downloadURL, "{name}", "attachment", 1)
+	downloadURL = strings.Replace(downloadURL, "{type}", "application/octet-stream", 1)
 
 	var lastErr error
 	var resp *http.Response
