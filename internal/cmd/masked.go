@@ -442,7 +442,7 @@ func updateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, email string, 
 				"new_state":     state,
 			})
 		}
-		fmt.Printf("[dry-run] Would %s: %s (currently %s)\n", action, email, alias.State)
+		fmt.Printf("[dry-run] Would %s: %s (currently %s)\n", stateActionVerb(state), email, alias.State)
 		return nil
 	}
 
@@ -511,7 +511,7 @@ func bulkUpdateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, domain str
 			})
 		}
 
-		fmt.Printf("[dry-run] Would %s %d aliases for %s:\n", action, len(toUpdate), domain)
+		fmt.Printf("[dry-run] Would %s %d aliases for %s:\n", stateActionVerb(state), len(toUpdate), domain)
 		for _, alias := range toUpdate {
 			fmt.Printf("  %s (currently %s)\n", alias.Email, alias.State)
 		}
@@ -545,7 +545,7 @@ func bulkUpdateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, domain str
 	if failed == 0 {
 		fmt.Printf("Successfully %s %d aliases for %s\n", action, succeeded, domain)
 	} else {
-		fmt.Printf("%s %d aliases, %d failed:\n", action, succeeded, failed)
+		fmt.Printf("Partially %s %d aliases, %d failed:\n", action, succeeded, failed)
 		for _, e := range errors {
 			fmt.Printf("  %s\n", e)
 		}
@@ -555,6 +555,19 @@ func bulkUpdateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, domain str
 }
 
 func stateAction(state jmap.MaskedEmailState) string {
+	switch state {
+	case jmap.MaskedEmailEnabled:
+		return "enabled"
+	case jmap.MaskedEmailDisabled:
+		return "disabled"
+	case jmap.MaskedEmailDeleted:
+		return "deleted"
+	default:
+		return "updated"
+	}
+}
+
+func stateActionVerb(state jmap.MaskedEmailState) string {
 	switch state {
 	case jmap.MaskedEmailEnabled:
 		return "enable"

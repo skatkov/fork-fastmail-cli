@@ -1178,12 +1178,15 @@ in the current directory. You can get the blob ID from the 'attachments' command
 				if outputFile == "" {
 					outputFile = "attachment"
 				}
+
+				// SECURITY: Sanitize auto-detected filename to prevent path traversal attacks
+				// Only applied when filename comes from email attachment metadata (untrusted source)
+				outputFile = sanitizeFilename(outputFile)
 			} else {
+				// User explicitly provided output path - respect it as-is
+				// (both absolute paths like /tmp/file.pdf and relative paths like ./file.pdf)
 				outputFile = args[2]
 			}
-
-			// SECURITY: Sanitize filename to prevent path traversal attacks
-			outputFile = sanitizeFilename(outputFile)
 
 			// Check if file already exists
 			if _, statErr := os.Stat(outputFile); statErr == nil {

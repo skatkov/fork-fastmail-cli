@@ -13,6 +13,38 @@ Fastmail in your terminal. Manage email, masked addresses, calendars, contacts, 
 - **Multiple accounts** - manage multiple Fastmail accounts
 - **Vacation** - set out-of-office auto-reply messages
 
+## API Availability
+
+Fastmail's public API provides limited access. Not all CLI commands work with standard Fastmail accounts.
+
+### Available to All Accounts
+
+These commands use Fastmail's standard JMAP API scopes:
+
+| Command | Description | API Scope |
+|---------|-------------|-----------|
+| `email` | Send, receive, search, organize emails | `urn:ietf:params:jmap:mail` |
+| `masked` | Create and manage masked email addresses | `https://www.fastmail.com/dev/maskedemail` |
+
+### Limited Availability
+
+These commands require additional API access that is **not available** to standard Fastmail accounts:
+
+| Command | Description | Status |
+|---------|-------------|--------|
+| `calendar` | Calendars, events, invitations | Requires CalDAV/JMAP Calendar scope |
+| `contacts` | Contact management | Requires CardDAV/JMAP Contacts scope |
+| `vacation` | Auto-reply settings | Requires VacationResponse scope |
+| `files` | File storage via WebDAV | Requires Files scope |
+| `quota` | Storage quota information | Requires Quota scope |
+
+These features may become available through:
+- Fastmail business/enterprise accounts
+- Future API expansions
+- Direct CalDAV/CardDAV access (not yet implemented in this CLI)
+
+For the latest on API availability, see [Fastmail's developer documentation](https://www.fastmail.com/developer/).
+
 ## Installation
 
 ### Homebrew

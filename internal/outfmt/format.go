@@ -35,7 +35,19 @@ func WriteJSONFiltered(w io.Writer, v any, query string) error {
 		return WriteJSON(w, v)
 	}
 
-	result, err := filter.Apply(v, query)
+	// gojq expects JSON-compatible types (maps, slices, primitives), not Go structs.
+	// Marshal to JSON and unmarshal back to get JSON-compatible types.
+	jsonBytes, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("failed to marshal data for filtering: %w", err)
+	}
+
+	var jsonData any
+	if err = json.Unmarshal(jsonBytes, &jsonData); err != nil {
+		return fmt.Errorf("failed to unmarshal data for filtering: %w", err)
+	}
+
+	result, err := filter.Apply(jsonData, query)
 	if err != nil {
 		return err
 	}
