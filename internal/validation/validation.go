@@ -2,15 +2,12 @@ package validation
 
 import (
 	"fmt"
-	"regexp"
 	"time"
 )
 
-var simpleEmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-
-// Email validates email format using a simple regex pattern.
+// Email validates email format.
 func Email(email string) error {
-	if !simpleEmailRegex.MatchString(email) {
+	if !IsValidEmail(email) {
 		return fmt.Errorf("invalid email format: %s", email)
 	}
 	return nil
