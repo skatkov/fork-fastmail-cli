@@ -4,6 +4,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
 )
 
 func TestIsValidEmail(t *testing.T) {
@@ -154,5 +156,119 @@ func TestSanitizeFilename_LengthLimit(t *testing.T) {
 	// Should preserve .txt extension
 	if result[len(result)-4:] != ".txt" {
 		t.Errorf("sanitizeFilename() did not preserve extension, got %q", result[len(result)-4:])
+	}
+}
+
+func TestEmailToOutput(t *testing.T) {
+	tests := []struct {
+		name       string
+		email      jmap.Email
+		wantFrom   string
+		wantTo     string
+		wantUnread bool
+	}{
+		{
+			name: "normal read email",
+			email: jmap.Email{
+				ID:       "test-id",
+				Subject:  "Test Subject",
+				From:     []jmap.EmailAddress{{Email: "sender@example.com", Name: "Sender Name"}},
+				To:       []jmap.EmailAddress{{Email: "recipient@example.com"}},
+				Keywords: map[string]bool{"$seen": true},
+			},
+			wantFrom:   "sender@example.com",
+			wantTo:     "recipient@example.com",
+			wantUnread: false,
+		},
+		{
+			name: "unread email - seen false",
+			email: jmap.Email{
+				ID:       "test-id",
+				Keywords: map[string]bool{"$seen": false},
+			},
+			wantFrom:   "",
+			wantTo:     "",
+			wantUnread: true,
+		},
+		{
+			name: "unread email - no seen keyword",
+			email: jmap.Email{
+				ID:       "test-id",
+				Keywords: map[string]bool{"$flagged": true},
+			},
+			wantFrom:   "",
+			wantTo:     "",
+			wantUnread: true,
+		},
+		{
+			name: "nil keywords means unread",
+			email: jmap.Email{
+				ID:       "test-id",
+				Keywords: nil,
+			},
+			wantFrom:   "",
+			wantTo:     "",
+			wantUnread: true,
+		},
+		{
+			name: "empty from and to arrays",
+			email: jmap.Email{
+				ID:       "test-id",
+				From:     []jmap.EmailAddress{},
+				To:       []jmap.EmailAddress{},
+				Keywords: map[string]bool{"$seen": true},
+			},
+			wantFrom:   "",
+			wantTo:     "",
+			wantUnread: false,
+		},
+		{
+			name: "multiple from addresses uses first",
+			email: jmap.Email{
+				ID: "test-id",
+				From: []jmap.EmailAddress{
+					{Email: "first@example.com", Name: "First"},
+					{Email: "second@example.com", Name: "Second"},
+				},
+				Keywords: map[string]bool{"$seen": true},
+			},
+			wantFrom:   "first@example.com",
+			wantTo:     "",
+			wantUnread: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := emailToOutput(tt.email)
+			if out.FromEmail != tt.wantFrom {
+				t.Errorf("FromEmail = %q, want %q", out.FromEmail, tt.wantFrom)
+			}
+			if out.ToEmail != tt.wantTo {
+				t.Errorf("ToEmail = %q, want %q", out.ToEmail, tt.wantTo)
+			}
+			if out.IsUnread != tt.wantUnread {
+				t.Errorf("IsUnread = %v, want %v", out.IsUnread, tt.wantUnread)
+			}
+		})
+	}
+}
+
+func TestEmailsToOutput(t *testing.T) {
+	emails := []jmap.Email{
+		{ID: "1", From: []jmap.EmailAddress{{Email: "a@example.com"}}},
+		{ID: "2", From: []jmap.EmailAddress{{Email: "b@example.com"}}},
+	}
+
+	out := emailsToOutput(emails)
+
+	if len(out) != 2 {
+		t.Fatalf("emailsToOutput() returned %d items, want 2", len(out))
+	}
+	if out[0].FromEmail != "a@example.com" {
+		t.Errorf("out[0].FromEmail = %q, want %q", out[0].FromEmail, "a@example.com")
+	}
+	if out[1].FromEmail != "b@example.com" {
+		t.Errorf("out[1].FromEmail = %q, want %q", out[1].FromEmail, "b@example.com")
 	}
 }
