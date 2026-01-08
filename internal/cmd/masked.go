@@ -383,7 +383,7 @@ func newMaskedDescriptionCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			if alias.Description == description {
-				fmt.Println("Description already set to the requested value")
+				printAlready("Description already set to the requested value")
 				return nil
 			}
 
@@ -476,7 +476,7 @@ func bulkUpdateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, domain str
 	}
 
 	if len(toUpdate) == 0 {
-		fmt.Printf("All %d aliases for %s are already %s\n", len(aliases), domain, state)
+		printAlready(formatAlready("All %d aliases for %s are already %s", len(aliases), domain, state))
 		return nil
 	}
 
