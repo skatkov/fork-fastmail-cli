@@ -385,22 +385,11 @@ func (c *Client) CreateReplyDraft(ctx context.Context, replyToID string, opts Se
 
 	// If no From specified, check if the original email was sent to a masked email
 	// and use that as the reply address to maintain identity consistency.
-	// But only use it if the masked email is also a sending identity.
+	// Masked emails can be used for sending (using default identity for authorization).
 	if opts.From == "" {
 		maskedFrom := c.findMaskedEmailRecipient(ctx, original)
 		if maskedFrom != "" {
-			// Verify the masked email is a valid sending identity
-			identities, idErr := c.GetIdentities(ctx)
-			if idErr == nil {
-				for _, id := range identities {
-					if strings.EqualFold(id.Email, maskedFrom) {
-						opts.From = maskedFrom
-						break
-					}
-				}
-			}
-			// If masked email isn't a sending identity, leave opts.From empty
-			// to use default identity (prevents unsendable drafts)
+			opts.From = maskedFrom
 		}
 	}
 
@@ -606,7 +595,7 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 		return "", err
 	}
 
-	// Get identities to validate from address
+	// Get identities for authorization
 	identities, err := c.GetIdentities(ctx)
 	if err != nil {
 		return "", err
@@ -616,51 +605,65 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 		return "", ErrNoIdentities
 	}
 
-	// Determine which identity to use
-	var selectedIdentity *Identity
+	// Find default identity (for authorization when sending from masked email)
+	var defaultIdentity *Identity
+	for i := range identities {
+		if !identities[i].MayDelete {
+			defaultIdentity = &identities[i]
+			break
+		}
+	}
+	if defaultIdentity == nil {
+		defaultIdentity = &identities[0]
+	}
+
+	// Determine authorization identity and sending address
+	// - authIdentity: used for identityId (JMAP authorization)
+	// - sendFromEmail: used in email From header and envelope mailFrom
+	var authIdentity *Identity
+	var sendFromEmail string
+
 	if opts.From != "" {
+		// Check if From matches an identity
 		for i := range identities {
 			if strings.EqualFold(identities[i].Email, opts.From) {
-				selectedIdentity = &identities[i]
+				authIdentity = &identities[i]
+				sendFromEmail = identities[i].Email
 				break
 			}
 		}
-		if selectedIdentity == nil {
-			// Build list of available identities for error message
-			availableIdentities := make([]string, len(identities))
-			for i, id := range identities {
-				availableIdentities[i] = id.Email
-			}
 
-			// Check if the attempted address is a masked email
-			isMasked := false
+		// If not an identity, check if it's a masked email
+		if authIdentity == nil {
 			maskedEmails, maskedErr := c.GetMaskedEmails(ctx)
 			if maskedErr == nil {
 				for _, me := range maskedEmails {
-					if strings.EqualFold(me.Email, opts.From) {
-						isMasked = true
+					if strings.EqualFold(me.Email, opts.From) && (me.State == MaskedEmailEnabled || me.State == MaskedEmailPending) {
+						// Use default identity for authorization, but send from masked email
+						authIdentity = defaultIdentity
+						sendFromEmail = me.Email
 						break
 					}
 				}
 			}
+		}
 
+		// If neither identity nor masked email, error
+		if authIdentity == nil {
+			availableIdentities := make([]string, len(identities))
+			for i, id := range identities {
+				availableIdentities[i] = id.Email
+			}
 			return "", &InvalidFromAddressError{
 				AttemptedAddress:    opts.From,
 				AvailableIdentities: availableIdentities,
-				IsMaskedEmail:       isMasked,
+				IsMaskedEmail:       false,
 			}
 		}
 	} else {
-		// Use default identity (first non-deletable one)
-		for i := range identities {
-			if !identities[i].MayDelete {
-				selectedIdentity = &identities[i]
-				break
-			}
-		}
-		if selectedIdentity == nil {
-			selectedIdentity = &identities[0]
-		}
+		// No From specified, use default identity
+		authIdentity = defaultIdentity
+		sendFromEmail = defaultIdentity.Email
 	}
 
 	// Get mailboxes
@@ -700,7 +703,7 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 	emailObj := map[string]any{
 		"mailboxIds": map[string]bool{initialMailboxID: true},
 		"keywords":   map[string]bool{"$draft": true},
-		"from":       []map[string]string{{"email": selectedIdentity.Email}},
+		"from":       []map[string]string{{"email": sendFromEmail}},
 		"subject":    opts.Subject,
 	}
 
@@ -771,9 +774,9 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 				"create": map[string]any{
 					"submission": map[string]any{
 						"emailId":    "#draft",
-						"identityId": selectedIdentity.ID,
+						"identityId": authIdentity.ID,
 						"envelope": map[string]any{
-							"mailFrom": map[string]string{"email": selectedIdentity.Email},
+							"mailFrom": map[string]string{"email": sendFromEmail},
 							"rcptTo":   rcptTo,
 						},
 					},
