@@ -132,7 +132,14 @@ Examples:
 					return fmt.Errorf("--track requires --html (pixel must be in HTML)")
 				}
 
-				firstRecipient := to[0]
+				var firstRecipient string
+				if len(to) > 0 {
+					firstRecipient = to[0]
+				} else if len(cc) > 0 {
+					firstRecipient = cc[0]
+				} else {
+					firstRecipient = bcc[0]
+				}
 				pixelURL, blob, pixelErr := tracking.GeneratePixelURL(trackingCfg, strings.TrimSpace(firstRecipient), subject)
 				if pixelErr != nil {
 					return fmt.Errorf("generate tracking pixel: %w", pixelErr)

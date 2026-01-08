@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
 func newEmailTrackOpensCmd(_ *rootFlags) *cobra.Command {
 	var to, since string
 
@@ -54,7 +56,7 @@ func queryByTrackingID(cmd *cobra.Command, cfg *tracking.Config, trackingID stri
 		return fmt.Errorf("build request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("query tracker: %w", err)
 	}
@@ -136,7 +138,7 @@ func queryAdmin(cmd *cobra.Command, cfg *tracking.Config, to, since string, json
 	req, _ := http.NewRequestWithContext(cmd.Context(), "GET", reqURL.String(), nil)
 	req.Header.Set("Authorization", "Bearer "+cfg.AdminKey)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("query tracker: %w", err)
 	}
