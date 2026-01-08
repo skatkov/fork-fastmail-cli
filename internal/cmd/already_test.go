@@ -14,10 +14,3 @@ func TestPrintAlready(t *testing.T) {
 		t.Fatalf("unexpected output: %q", out)
 	}
 }
-
-func TestFormatAlready(t *testing.T) {
-	msg := formatAlready("Already %s %d", "done", 2)
-	if msg != "Already done 2" {
-		t.Fatalf("unexpected format: %q", msg)
-	}
-}

@@ -476,7 +476,7 @@ func bulkUpdateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, domain str
 	}
 
 	if len(toUpdate) == 0 {
-		printAlready(formatAlready("All %d aliases for %s are already %s", len(aliases), domain, state))
+		printAlready(fmt.Sprintf("All %d aliases for %s are already %s", len(aliases), domain, state))
 		return nil
 	}
 
