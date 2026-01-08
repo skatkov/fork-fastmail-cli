@@ -118,3 +118,16 @@ func TestPrintMaskedDryRunBulk_Text(t *testing.T) {
 		t.Fatalf("missing items: %q", out)
 	}
 }
+
+func TestBuildMaskedDryRunAlias(t *testing.T) {
+	alias := buildMaskedDryRunAlias("a@example.com", jmap.MaskedEmailDisabled, jmap.MaskedEmailEnabled)
+	if alias["email"] != "a@example.com" {
+		t.Fatalf("unexpected email: %v", alias["email"])
+	}
+	if alias["current_state"] != jmap.MaskedEmailDisabled {
+		t.Fatalf("unexpected current_state: %v", alias["current_state"])
+	}
+	if alias["new_state"] != jmap.MaskedEmailEnabled {
+		t.Fatalf("unexpected new_state: %v", alias["new_state"])
+	}
+}

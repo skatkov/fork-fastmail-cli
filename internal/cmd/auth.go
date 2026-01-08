@@ -142,7 +142,7 @@ func newAuthListCmd() *cobra.Command {
 				if isJSON(cmd.Context()) {
 					return outfmt.WriteJSON(os.Stdout, []string{})
 				}
-				fmt.Fprintln(os.Stderr, "No accounts configured")
+				printNoResults("No accounts configured")
 				return nil
 			}
 
@@ -242,7 +242,7 @@ func newAuthStatusCmd() *cobra.Command {
 						"source":  "none",
 					})
 				}
-				fmt.Fprintln(os.Stderr, "No accounts configured. Run: fastmail auth add <email>")
+				printNoResults("No accounts configured. Run: fastmail auth add <email>")
 				return nil
 			}
 
