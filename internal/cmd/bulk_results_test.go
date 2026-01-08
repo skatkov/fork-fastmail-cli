@@ -34,3 +34,15 @@ func TestPrintBulkResults_WithFailures(t *testing.T) {
 		t.Fatalf("missing failure lines: %q", out)
 	}
 }
+
+func TestPrintBulkResults_WithFailures_NoTarget(t *testing.T) {
+	out := captureStdout(t, func() {
+		printBulkResults("Deleted", "", 2, 1, map[string]string{"id1": "boom"})
+	})
+	if !strings.Contains(out, "Deleted 2, 1 failed:") {
+		t.Fatalf("missing header: %q", out)
+	}
+	if !strings.Contains(out, "id1: boom") {
+		t.Fatalf("missing failure line: %q", out)
+	}
+}

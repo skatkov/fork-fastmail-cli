@@ -39,7 +39,7 @@ Examples:
 				if isJSON(cmd.Context()) {
 					return printJSON(cmd, []any{})
 				}
-				fmt.Println("No quota information available")
+				printNoResults("No quota information available")
 				return nil
 			}
 
