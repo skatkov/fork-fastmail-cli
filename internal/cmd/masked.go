@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"text/tabwriter"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
-	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
 )
 
@@ -90,14 +88,14 @@ With a domain, lists only aliases for that domain.`,
 
 			if len(aliases) == 0 {
 				if domain != "" {
-					outfmt.Errorf("No masked emails found for %s", domain)
+					printNoResults("No masked emails found for %s", domain)
 				} else {
-					outfmt.Errorf("No masked emails found")
+					printNoResults("No masked emails found")
 				}
 				return nil
 			}
 
-			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			tw := newTabWriter()
 			fmt.Fprintln(tw, "EMAIL\tDOMAIN\tSTATE\tDESCRIPTION")
 			for _, alias := range aliases {
 				desc := alias.Description
@@ -434,16 +432,7 @@ func updateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, email string, 
 	action := stateAction(state)
 
 	if dryRun {
-		if isJSON(cmd.Context()) {
-			return printJSON(cmd, map[string]any{
-				"dry_run":       true,
-				"email":         email,
-				"current_state": alias.State,
-				"new_state":     state,
-			})
-		}
-		fmt.Printf("[dry-run] Would %s: %s (currently %s)\n", stateActionVerb(state), email, alias.State)
-		return nil
+		return printMaskedDryRunSingle(cmd, email, alias.State, state)
 	}
 
 	err = client.UpdateMaskedEmailState(cmd.Context(), alias.ID, state)
@@ -494,28 +483,7 @@ func bulkUpdateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, domain str
 	action := stateAction(state)
 
 	if dryRun {
-		if isJSON(cmd.Context()) {
-			results := make([]map[string]any, len(toUpdate))
-			for i, alias := range toUpdate {
-				results[i] = map[string]any{
-					"email":         alias.Email,
-					"current_state": alias.State,
-					"new_state":     state,
-				}
-			}
-			return printJSON(cmd, map[string]any{
-				"dry_run": true,
-				"domain":  domain,
-				"count":   len(toUpdate),
-				"aliases": results,
-			})
-		}
-
-		fmt.Printf("[dry-run] Would %s %d aliases for %s:\n", stateActionVerb(state), len(toUpdate), domain)
-		for _, alias := range toUpdate {
-			fmt.Printf("  %s (currently %s)\n", alias.Email, alias.State)
-		}
-		return nil
+		return printMaskedDryRunBulk(cmd, domain, state, toUpdate)
 	}
 
 	// Perform the updates
@@ -542,14 +510,7 @@ func bulkUpdateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, domain str
 		})
 	}
 
-	if failed == 0 {
-		fmt.Printf("Successfully %s %d aliases for %s\n", action, succeeded, domain)
-	} else {
-		fmt.Printf("Partially %s %d aliases, %d failed:\n", action, succeeded, failed)
-		for _, e := range errors {
-			fmt.Printf("  %s\n", e)
-		}
-	}
+	printMaskedBulkResults(action, succeeded, failed, domain, errors)
 
 	return nil
 }

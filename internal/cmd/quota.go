@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"math"
-	"os"
 	"strings"
-	"text/tabwriter"
 
+	"github.com/salmonumbrella/fastmail-cli/internal/format"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
 	"github.com/spf13/cobra"
 )
@@ -68,8 +66,8 @@ Examples:
 }
 
 // displayQuota displays a single quota with formatting
-func displayQuota(quota jmap.Quota, format string) {
-	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+func displayQuota(quota jmap.Quota, formatMode string) {
+	tw := newTabWriter()
 
 	// Display quota name/description
 	title := quota.Name
@@ -82,7 +80,7 @@ func displayQuota(quota jmap.Quota, format string) {
 	var usedStr, limitStr, availStr string
 	var percentage float64
 
-	if format == "bytes" {
+	if formatMode == "bytes" {
 		usedStr = fmt.Sprintf("%d bytes", quota.Used)
 		if quota.Limit > 0 {
 			limitStr = fmt.Sprintf("%d bytes", quota.Limit)
@@ -94,10 +92,10 @@ func displayQuota(quota jmap.Quota, format string) {
 		}
 	} else {
 		// human format
-		usedStr = formatBytes(quota.Used)
+		usedStr = format.FormatBytes(quota.Used)
 		if quota.Limit > 0 {
-			limitStr = formatBytes(quota.Limit)
-			availStr = formatBytes(quota.Limit - quota.Used)
+			limitStr = format.FormatBytes(quota.Limit)
+			availStr = format.FormatBytes(quota.Limit - quota.Used)
 			percentage = float64(quota.Used) / float64(quota.Limit) * 100
 		} else {
 			limitStr = "unlimited"
@@ -120,32 +118,6 @@ func displayQuota(quota jmap.Quota, format string) {
 		fmt.Println()
 		fmt.Printf("  %s %.1f%%\n", progressBar(percentage), percentage)
 	}
-}
-
-// formatBytes converts bytes to human-readable format (KB, MB, GB, TB)
-func formatBytes(bytes int64) string {
-	if bytes == 0 {
-		return "0 B"
-	}
-
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-
-	// Calculate the appropriate unit
-	exp := int(math.Log(float64(bytes)) / math.Log(unit))
-
-	// Ensure we don't go beyond TB
-	if exp > 4 {
-		exp = 4
-	}
-
-	units := []string{"B", "KB", "MB", "GB", "TB"}
-	value := float64(bytes) / math.Pow(unit, float64(exp))
-
-	// Format with 1 decimal place
-	return fmt.Sprintf("%.1f %s", value, units[exp])
 }
 
 // progressBar creates a visual progress bar

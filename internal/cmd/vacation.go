@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"text/tabwriter"
 	"time"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
@@ -43,7 +42,7 @@ func newVacationGetCmd(flags *rootFlags) *cobra.Command {
 				return printJSON(cmd, vr)
 			}
 
-			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			tw := newTabWriter()
 			status := "Disabled"
 			if vr.IsEnabled {
 				status = "Enabled"

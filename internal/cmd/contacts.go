@@ -5,7 +5,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
 	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
@@ -67,11 +66,11 @@ Optionally filter by address book ID and limit the number of results.`,
 			}
 
 			if len(contacts) == 0 {
-				outfmt.Errorf("No contacts found")
+				printNoResults("No contacts found")
 				return nil
 			}
 
-			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			tw := newTabWriter()
 			_, _ = fmt.Fprintln(tw, "NAME\tEMAIL\tPHONE\tCOMPANY") //nolint:errcheck
 			for _, contact := range contacts {
 				email := "-"
@@ -357,10 +356,8 @@ func newContactsDeleteCmd(flags *rootFlags) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !yes {
-				fmt.Print("Are you sure you want to delete this contact? (y/N): ")
-				var response string
-				fmt.Scanln(&response)
-				if strings.ToLower(response) != "y" {
+				confirmed, err := confirmPrompt(os.Stdout, "Are you sure you want to delete this contact? (y/N): ", "y")
+				if err != nil || !confirmed {
 					outfmt.Errorf("Cancelled")
 					return nil
 				}
@@ -419,11 +416,11 @@ The query is matched against contact names, emails, and other fields.`,
 			}
 
 			if len(contacts) == 0 {
-				outfmt.Errorf("No contacts found matching '%s'", args[0])
+				printNoResults("No contacts found matching '%s'", args[0])
 				return nil
 			}
 
-			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			tw := newTabWriter()
 			fmt.Fprintln(tw, "NAME\tEMAIL\tPHONE\tCOMPANY")
 			for _, contact := range contacts {
 				email := "-"
@@ -479,11 +476,11 @@ func newContactsAddressBooksCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			if len(addressBooks) == 0 {
-				outfmt.Errorf("No address books found")
+				printNoResults("No address books found")
 				return nil
 			}
 
-			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			tw := newTabWriter()
 			fmt.Fprintln(tw, "ID\tNAME\tDEFAULT\tSUBSCRIBED")
 			for _, ab := range addressBooks {
 				def := ""

@@ -7,7 +7,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/caldav"
@@ -66,11 +65,11 @@ func newCalendarListCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			if len(calendars) == 0 {
-				outfmt.Errorf("No calendars found")
+				printNoResults("No calendars found")
 				return nil
 			}
 
-			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			tw := newTabWriter()
 			_, _ = fmt.Fprintln(tw, "ID\tNAME\tCOLOR\tVISIBLE\tSUBSCRIBED") //nolint:errcheck
 			for _, cal := range calendars {
 				visible := ""
@@ -153,11 +152,11 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T00:00:00Z) or YYYY-MM-DD.`,
 			}
 
 			if len(events) == 0 {
-				outfmt.Errorf("No events found")
+				printNoResults("No events found")
 				return nil
 			}
 
-			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			tw := newTabWriter()
 			_, _ = fmt.Fprintln(tw, "ID\tTITLE\tSTART\tEND\tSTATUS") //nolint:errcheck
 			for _, event := range events {
 				startStr := formatEventTime(event.Start, event.IsAllDay)
@@ -457,10 +456,8 @@ func newCalendarEventDeleteCmd(flags *rootFlags) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !yes {
-				fmt.Print("Are you sure you want to delete this event? (y/N): ")
-				var response string
-				_, _ = fmt.Scanln(&response) //nolint:errcheck
-				if strings.ToLower(response) != "y" {
+				confirmed, err := confirmPrompt(os.Stdout, "Are you sure you want to delete this event? (y/N): ", "y")
+				if err != nil || !confirmed {
 					outfmt.Errorf("Cancelled")
 					return nil
 				}

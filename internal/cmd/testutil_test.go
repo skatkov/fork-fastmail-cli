@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"testing"
 )
@@ -66,4 +68,54 @@ func setupMinimalTestEnvironment(t *testing.T) func() {
 			os.Unsetenv("FASTMAIL_ACCOUNT")
 		}
 	}
+}
+
+// captureStdout captures stdout output for assertions in tests.
+//
+//nolint:unused // shared test helper
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	stdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = w
+
+	fn()
+
+	_ = w.Close()
+	os.Stdout = stdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	_ = r.Close()
+
+	return buf.String()
+}
+
+// captureStderr captures stderr output for assertions in tests.
+//
+//nolint:unused // shared test helper
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+
+	stderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stderr = w
+
+	fn()
+
+	_ = w.Close()
+	os.Stderr = stderr
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	_ = r.Close()
+
+	return buf.String()
 }

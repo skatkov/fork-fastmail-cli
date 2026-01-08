@@ -1,17 +1,15 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/config"
-	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
+	"github.com/salmonumbrella/fastmail-cli/internal/format"
 	"github.com/salmonumbrella/fastmail-cli/internal/webdav"
 	"github.com/spf13/cobra"
 )
@@ -84,11 +82,11 @@ Use --recursive to list all files recursively.`,
 			}
 
 			if len(files) == 0 {
-				outfmt.Errorf("No files found")
+				printNoResults("No files found")
 				return nil
 			}
 
-			tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			tw := newTabWriter()
 			fmt.Fprintln(tw, "NAME\tTYPE\tSIZE\tMODIFIED")
 			for _, file := range files {
 				fileType := "file"
@@ -96,7 +94,7 @@ Use --recursive to list all files recursively.`,
 					fileType = "dir"
 				}
 
-				size := formatSize(file.Size)
+				size := format.FormatSize(file.Size)
 				if file.IsDirectory {
 					size = "-"
 				}
@@ -267,15 +265,11 @@ WARNING: This operation cannot be undone. Use with caution.`,
 
 			// Confirm deletion unless -y flag is provided
 			if !skipConfirmation {
-				fmt.Printf("Are you sure you want to delete %s? (yes/no): ", path)
-				reader := bufio.NewReader(os.Stdin)
-				response, err := reader.ReadString('\n')
+				confirmed, err := confirmPrompt(os.Stdout, fmt.Sprintf("Are you sure you want to delete %s? (yes/no): ", path), "yes", "y")
 				if err != nil {
-					return fmt.Errorf("failed to read confirmation: %w", err)
+					return err
 				}
-
-				response = strings.TrimSpace(strings.ToLower(response))
-				if response != "yes" && response != "y" {
+				if !confirmed {
 					fmt.Fprintln(os.Stderr, "Delete cancelled")
 					return nil
 				}
@@ -400,11 +394,11 @@ func listRecursive(cmd *cobra.Command, client *webdav.Client, rootPath string) e
 	}
 
 	if len(allFiles) == 0 {
-		outfmt.Errorf("No files found")
+		printNoResults("No files found")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	tw := newTabWriter()
 	fmt.Fprintln(tw, "PATH\tTYPE\tSIZE\tMODIFIED")
 	for _, item := range allFiles {
 		file := item.file
@@ -413,7 +407,7 @@ func listRecursive(cmd *cobra.Command, client *webdav.Client, rootPath string) e
 			fileType = "dir"
 		}
 
-		size := formatSize(file.Size)
+		size := format.FormatSize(file.Size)
 		if file.IsDirectory {
 			size = "-"
 		}

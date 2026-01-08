@@ -17,6 +17,7 @@ func TestNew_ColorModeNever(t *testing.T) {
 }
 
 func TestNew_ColorModeAlways(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
 	u := New("always")
 	if u == nil {
 		t.Fatal("expected UI, got nil")
