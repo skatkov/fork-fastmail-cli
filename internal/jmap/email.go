@@ -384,11 +384,23 @@ func (c *Client) CreateReplyDraft(ctx context.Context, replyToID string, opts Se
 	}
 
 	// If no From specified, check if the original email was sent to a masked email
-	// and use that as the reply address to maintain identity consistency
+	// and use that as the reply address to maintain identity consistency.
+	// But only use it if the masked email is also a sending identity.
 	if opts.From == "" {
 		maskedFrom := c.findMaskedEmailRecipient(ctx, original)
 		if maskedFrom != "" {
-			opts.From = maskedFrom
+			// Verify the masked email is a valid sending identity
+			identities, idErr := c.GetIdentities(ctx)
+			if idErr == nil {
+				for _, id := range identities {
+					if strings.EqualFold(id.Email, maskedFrom) {
+						opts.From = maskedFrom
+						break
+					}
+				}
+			}
+			// If masked email isn't a sending identity, leave opts.From empty
+			// to use default identity (prevents unsendable drafts)
 		}
 	}
 
@@ -608,13 +620,35 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 	var selectedIdentity *Identity
 	if opts.From != "" {
 		for i := range identities {
-			if identities[i].Email == opts.From {
+			if strings.EqualFold(identities[i].Email, opts.From) {
 				selectedIdentity = &identities[i]
 				break
 			}
 		}
 		if selectedIdentity == nil {
-			return "", ErrInvalidFromAddress
+			// Build list of available identities for error message
+			availableIdentities := make([]string, len(identities))
+			for i, id := range identities {
+				availableIdentities[i] = id.Email
+			}
+
+			// Check if the attempted address is a masked email
+			isMasked := false
+			maskedEmails, maskedErr := c.GetMaskedEmails(ctx)
+			if maskedErr == nil {
+				for _, me := range maskedEmails {
+					if strings.EqualFold(me.Email, opts.From) {
+						isMasked = true
+						break
+					}
+				}
+			}
+
+			return "", &InvalidFromAddressError{
+				AttemptedAddress:    opts.From,
+				AvailableIdentities: availableIdentities,
+				IsMaskedEmail:       isMasked,
+			}
 		}
 	} else {
 		// Use default identity (first non-deletable one)

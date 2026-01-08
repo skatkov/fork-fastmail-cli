@@ -409,6 +409,10 @@ Examples:
 				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
 					return cerrors.WithSuggestion(sendErr, cerrors.SuggestionReauth)
 				}
+				// Check for invalid from address error and provide helpful suggestion
+				if jmap.IsInvalidFromAddressError(err) {
+					return cerrors.WithSuggestion(sendErr, cerrors.SuggestionListIdentity)
+				}
 				return sendErr
 			}
 

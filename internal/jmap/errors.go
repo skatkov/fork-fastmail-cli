@@ -182,3 +182,23 @@ func IsNotFoundError(err error) bool {
 		errors.Is(err, ErrMailboxNotFound) ||
 		errors.Is(err, ErrEventNotFound)
 }
+
+// InvalidFromAddressError provides detailed context when a from address cannot be used.
+type InvalidFromAddressError struct {
+	AttemptedAddress    string
+	AvailableIdentities []string
+	IsMaskedEmail       bool
+}
+
+func (e *InvalidFromAddressError) Error() string {
+	if e.IsMaskedEmail {
+		return fmt.Sprintf("cannot send from masked email %q: it is not configured as a sending identity", e.AttemptedAddress)
+	}
+	return fmt.Sprintf("from address %q not verified for sending", e.AttemptedAddress)
+}
+
+// IsInvalidFromAddressError checks if an error is an InvalidFromAddressError.
+func IsInvalidFromAddressError(err error) bool {
+	var ife *InvalidFromAddressError
+	return errors.As(err, &ife)
+}

@@ -666,3 +666,140 @@ func TestSentinelErrors_Unchanged(t *testing.T) {
 		})
 	}
 }
+
+// TestInvalidFromAddressError_Error tests the Error() method for InvalidFromAddressError
+func TestInvalidFromAddressError_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      *InvalidFromAddressError
+		expected string
+	}{
+		{
+			name: "masked email",
+			err: &InvalidFromAddressError{
+				AttemptedAddress:    "masked.email123@fastmail.com",
+				AvailableIdentities: []string{"user@example.com"},
+				IsMaskedEmail:       true,
+			},
+			expected: `cannot send from masked email "masked.email123@fastmail.com": it is not configured as a sending identity`,
+		},
+		{
+			name: "non-masked email",
+			err: &InvalidFromAddressError{
+				AttemptedAddress:    "unknown@example.com",
+				AvailableIdentities: []string{"user@example.com"},
+				IsMaskedEmail:       false,
+			},
+			expected: `from address "unknown@example.com" not verified for sending`,
+		},
+		{
+			name: "masked email with multiple identities",
+			err: &InvalidFromAddressError{
+				AttemptedAddress:    "small.key2459@fastmail.com",
+				AvailableIdentities: []string{"user@example.com", "work@company.com"},
+				IsMaskedEmail:       true,
+			},
+			expected: `cannot send from masked email "small.key2459@fastmail.com": it is not configured as a sending identity`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.err.Error()
+			if got != tt.expected {
+				t.Errorf("InvalidFromAddressError.Error() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestIsInvalidFromAddressError tests the IsInvalidFromAddressError helper function
+func TestIsInvalidFromAddressError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name: "direct InvalidFromAddressError",
+			err: &InvalidFromAddressError{
+				AttemptedAddress:    "test@example.com",
+				AvailableIdentities: []string{"user@example.com"},
+				IsMaskedEmail:       false,
+			},
+			expected: true,
+		},
+		{
+			name: "wrapped InvalidFromAddressError",
+			err: fmt.Errorf("sending email: %w", &InvalidFromAddressError{
+				AttemptedAddress:    "masked@fastmail.com",
+				AvailableIdentities: []string{"user@example.com"},
+				IsMaskedEmail:       true,
+			}),
+			expected: true,
+		},
+		{
+			name:     "other error type",
+			err:      &ValidationError{Message: "invalid"},
+			expected: false,
+		},
+		{
+			name:     "sentinel error ErrInvalidFromAddress",
+			err:      ErrInvalidFromAddress,
+			expected: false,
+		},
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "generic error",
+			err:      errors.New("generic error"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsInvalidFromAddressError(tt.err)
+			if got != tt.expected {
+				t.Errorf("IsInvalidFromAddressError() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestInvalidFromAddressError_Unwrap tests errors.As unwrapping for InvalidFromAddressError
+func TestInvalidFromAddressError_Unwrap(t *testing.T) {
+	original := &InvalidFromAddressError{
+		AttemptedAddress:    "masked@fastmail.com",
+		AvailableIdentities: []string{"user@example.com", "work@company.com"},
+		IsMaskedEmail:       true,
+	}
+	wrapped := fmt.Errorf("outer: %w", original)
+
+	var ife *InvalidFromAddressError
+	if !errors.As(wrapped, &ife) {
+		t.Fatal("errors.As() failed to unwrap InvalidFromAddressError")
+	}
+	if ife.AttemptedAddress != "masked@fastmail.com" {
+		t.Errorf("unwrapped AttemptedAddress = %q, want %q", ife.AttemptedAddress, "masked@fastmail.com")
+	}
+	if !ife.IsMaskedEmail {
+		t.Error("unwrapped IsMaskedEmail = false, want true")
+	}
+	if len(ife.AvailableIdentities) != 2 {
+		t.Errorf("unwrapped AvailableIdentities len = %d, want 2", len(ife.AvailableIdentities))
+	}
+}
+
+// TestInvalidFromAddressError_TypedNil tests behavior with typed nil pointer
+func TestInvalidFromAddressError_TypedNil(t *testing.T) {
+	var nilInvalidFrom error = (*InvalidFromAddressError)(nil)
+
+	// errors.As matches on type, even for typed nil pointers (expected Go behavior)
+	if !IsInvalidFromAddressError(nilInvalidFrom) {
+		t.Error("IsInvalidFromAddressError(typed nil) = false, want true (expected errors.As behavior)")
+	}
+}
