@@ -47,7 +47,7 @@ func newEmailAttachmentsCmd(flags *rootFlags) *cobra.Command {
 					att.BlobID,
 					sanitizeTab(att.Name),
 					att.Type,
-					format.FormatSize(att.Size),
+					format.FormatBytes(att.Size),
 				)
 			}
 			tw.Flush()
@@ -151,7 +151,7 @@ in the current directory. You can get the blob ID from the 'attachments' command
 				})
 			}
 
-			fmt.Printf("Downloaded attachment to %s (%s)\n", outputFile, format.FormatSize(written))
+			fmt.Printf("Downloaded attachment to %s (%s)\n", outputFile, format.FormatBytes(written))
 			return nil
 		},
 	}

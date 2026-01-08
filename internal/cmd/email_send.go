@@ -74,7 +74,7 @@ Examples:
 
 				// Check file size before upload
 				if fileInfo.Size() > jmap.MaxUploadSize {
-					return fmt.Errorf("attachment '%s' too large (%s, max 50 MB)", attPath, format.FormatSize(fileInfo.Size()))
+					return fmt.Errorf("attachment '%s' too large (%s, max 50 MB)", attPath, format.FormatBytes(fileInfo.Size()))
 				}
 
 				// Open and upload the file

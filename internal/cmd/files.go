@@ -94,7 +94,7 @@ Use --recursive to list all files recursively.`,
 					fileType = "dir"
 				}
 
-				size := format.FormatSize(file.Size)
+				size := format.FormatBytes(file.Size)
 				if file.IsDirectory {
 					size = "-"
 				}
@@ -407,7 +407,7 @@ func listRecursive(cmd *cobra.Command, client *webdav.Client, rootPath string) e
 			fileType = "dir"
 		}
 
-		size := format.FormatSize(file.Size)
+		size := format.FormatBytes(file.Size)
 		if file.IsDirectory {
 			size = "-"
 		}
