@@ -27,6 +27,7 @@ func newEmailCmd(flags *rootFlags) *cobra.Command {
 	cmd.AddCommand(newMailboxRenameCmd(flags))
 	cmd.AddCommand(newEmailImportCmd(flags))
 	cmd.AddCommand(newEmailIdentitiesCmd(flags))
+	cmd.AddCommand(newEmailTrackCmd(flags))
 
 	return cmd
 }

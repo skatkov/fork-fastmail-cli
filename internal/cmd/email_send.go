@@ -8,6 +8,7 @@ import (
 	cerrors "github.com/salmonumbrella/fastmail-cli/internal/errors"
 	"github.com/salmonumbrella/fastmail-cli/internal/format"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
+	"github.com/salmonumbrella/fastmail-cli/internal/tracking"
 	"github.com/spf13/cobra"
 )
 
@@ -18,6 +19,7 @@ func newEmailSendCmd(flags *rootFlags) *cobra.Command {
 	var replyTo string
 	var attachments []string
 	var fromIdentity string
+	var track bool
 
 	cmd := &cobra.Command{
 		Use:   "send",
@@ -110,6 +112,39 @@ Examples:
 				Attachments: attachmentOpts,
 			}
 
+			// Handle tracking
+			var trackingID string
+			if track {
+				// Validate single recipient for tracking
+				totalRecipients := len(to) + len(cc) + len(bcc)
+				if totalRecipients != 1 {
+					return fmt.Errorf("--track requires exactly 1 recipient (no cc/bcc)")
+				}
+
+				trackingCfg, cfgErr := tracking.LoadConfig()
+				if cfgErr != nil {
+					return fmt.Errorf("load tracking config: %w", cfgErr)
+				}
+				if !trackingCfg.IsConfigured() {
+					return fmt.Errorf("tracking not configured; run 'fastmail email track setup' first")
+				}
+				if strings.TrimSpace(htmlBody) == "" {
+					return fmt.Errorf("--track requires --html (pixel must be in HTML)")
+				}
+
+				firstRecipient := to[0]
+				pixelURL, blob, pixelErr := tracking.GeneratePixelURL(trackingCfg, strings.TrimSpace(firstRecipient), subject)
+				if pixelErr != nil {
+					return fmt.Errorf("generate tracking pixel: %w", pixelErr)
+				}
+				trackingID = blob
+
+				// Inject pixel into HTML body
+				pixelHTML := tracking.GeneratePixelHTML(pixelURL)
+				htmlBody = injectTrackingPixel(htmlBody, pixelHTML)
+				opts.HTMLBody = htmlBody
+			}
+
 			if draft {
 				var draftID string
 
@@ -125,15 +160,23 @@ Examples:
 					return fmt.Errorf("failed to save draft: %w", err)
 				}
 
+				result := map[string]any{
+					"draftId": draftID,
+					"status":  "draft",
+					"replyTo": replyTo,
+				}
+				if trackingID != "" {
+					result["trackingId"] = trackingID
+				}
+
 				if isJSON(cmd.Context()) {
-					return printJSON(cmd, map[string]any{
-						"draftId": draftID,
-						"status":  "draft",
-						"replyTo": replyTo,
-					})
+					return printJSON(cmd, result)
 				}
 
 				fmt.Printf("Draft saved (ID: %s)\n", draftID)
+				if trackingID != "" {
+					fmt.Printf("Tracking ID: %s\n", trackingID)
+				}
 				return nil
 			}
 
@@ -151,14 +194,22 @@ Examples:
 				return sendErr
 			}
 
+			result := map[string]any{
+				"submissionId": submissionID,
+				"status":       "sent",
+			}
+			if trackingID != "" {
+				result["trackingId"] = trackingID
+			}
+
 			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
-					"submissionId": submissionID,
-					"status":       "sent",
-				})
+				return printJSON(cmd, result)
 			}
 
 			fmt.Printf("Email sent successfully (submission ID: %s)\n", submissionID)
+			if trackingID != "" {
+				fmt.Printf("Tracking ID: %s\n", trackingID)
+			}
 			return nil
 		},
 	}
@@ -173,6 +224,18 @@ Examples:
 	cmd.Flags().BoolVar(&draft, "draft", false, "Save as draft instead of sending")
 	cmd.Flags().StringVar(&replyTo, "reply-to", "", "Email ID to reply to (threads the draft)")
 	cmd.Flags().StringSliceVar(&attachments, "attach", nil, "Attach files (path or path:name)")
+	cmd.Flags().BoolVar(&track, "track", false, "Enable open tracking (requires tracking setup)")
 
 	return cmd
+}
+
+func injectTrackingPixel(htmlBody, pixelHTML string) string {
+	lower := strings.ToLower(htmlBody)
+	if i := strings.LastIndex(lower, "</body>"); i != -1 {
+		return htmlBody[:i] + pixelHTML + htmlBody[i:]
+	}
+	if i := strings.LastIndex(lower, "</html>"); i != -1 {
+		return htmlBody[:i] + pixelHTML + htmlBody[i:]
+	}
+	return htmlBody + pixelHTML
 }
