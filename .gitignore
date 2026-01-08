@@ -33,3 +33,4 @@ Thumbs.db
 *.todo
 *.bak
 *.orig
+node_modules
