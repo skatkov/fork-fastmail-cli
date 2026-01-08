@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
@@ -41,6 +42,22 @@ func TestPrintMaskedDryRunSingle_JSON(t *testing.T) {
 	}
 }
 
+func TestPrintMaskedDryRunSingle_Text(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	out := captureStdout(t, func() {
+		err := printMaskedDryRunSingle(cmd, "a@example.com", jmap.MaskedEmailDisabled, jmap.MaskedEmailEnabled)
+		if err != nil {
+			t.Fatalf("printMaskedDryRunSingle error: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "[dry-run] Would enable: a@example.com (currently disabled)") {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
 func TestPrintMaskedDryRunBulk_JSON(t *testing.T) {
 	cmd := &cobra.Command{}
 	ctx := context.WithValue(context.Background(), outputModeKey, outfmt.JSON)
@@ -75,5 +92,29 @@ func TestPrintMaskedDryRunBulk_JSON(t *testing.T) {
 	aliases, ok := payload["aliases"].([]any)
 	if !ok || len(aliases) != 2 {
 		t.Fatalf("unexpected aliases payload: %#v", payload["aliases"])
+	}
+}
+
+func TestPrintMaskedDryRunBulk_Text(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+
+	toUpdate := []jmap.MaskedEmail{
+		{Email: "a@example.com", State: jmap.MaskedEmailDisabled},
+		{Email: "b@example.com", State: jmap.MaskedEmailDisabled},
+	}
+
+	out := captureStdout(t, func() {
+		err := printMaskedDryRunBulk(cmd, "example.com", jmap.MaskedEmailEnabled, toUpdate)
+		if err != nil {
+			t.Fatalf("printMaskedDryRunBulk error: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "[dry-run] Would enable 2 aliases for example.com:") {
+		t.Fatalf("missing header: %q", out)
+	}
+	if !strings.Contains(out, "  a@example.com (currently disabled)") || !strings.Contains(out, "  b@example.com (currently disabled)") {
+		t.Fatalf("missing items: %q", out)
 	}
 }

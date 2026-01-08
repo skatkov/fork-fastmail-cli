@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
-	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
 )
 
@@ -358,7 +357,7 @@ func newContactsDeleteCmd(flags *rootFlags) *cobra.Command {
 			if !yes {
 				confirmed, err := confirmPrompt(os.Stdout, "Are you sure you want to delete this contact? (y/N): ", "y")
 				if err != nil || !confirmed {
-					outfmt.Errorf("Cancelled")
+					printCancelled()
 					return nil
 				}
 			}

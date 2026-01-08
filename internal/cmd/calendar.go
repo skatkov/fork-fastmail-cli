@@ -12,7 +12,6 @@ import (
 	"github.com/salmonumbrella/fastmail-cli/internal/caldav"
 	"github.com/salmonumbrella/fastmail-cli/internal/config"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
-	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
 )
 
@@ -458,7 +457,7 @@ func newCalendarEventDeleteCmd(flags *rootFlags) *cobra.Command {
 			if !yes {
 				confirmed, err := confirmPrompt(os.Stdout, "Are you sure you want to delete this event? (y/N): ", "y")
 				if err != nil || !confirmed {
-					outfmt.Errorf("Cancelled")
+					printCancelled()
 					return nil
 				}
 			}
