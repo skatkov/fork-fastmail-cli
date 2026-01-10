@@ -3,14 +3,13 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	cerrors "github.com/salmonumbrella/fastmail-cli/internal/errors"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
 	"github.com/spf13/cobra"
 )
 
-func newEmailImportCmd(flags *rootFlags) *cobra.Command {
+func newEmailImportCmd(app *App) *cobra.Command {
 	var mailbox string
 	var markRead bool
 
@@ -22,8 +21,8 @@ func newEmailImportCmd(flags *rootFlags) *cobra.Command {
 The email will be imported with its original headers and content.
 By default, emails are imported to the Inbox and marked as unread.`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -83,15 +82,11 @@ By default, emails are imported to the Inbox and marked as unread.`,
 
 			emailID, err := client.ImportEmail(cmd.Context(), opts)
 			if err != nil {
-				importErr := cerrors.WithContext(err, "importing email")
-				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
-					return cerrors.WithSuggestion(importErr, cerrors.SuggestionReauth)
-				}
-				return importErr
+				return cerrors.WithContext(err, "importing email")
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"emailId":   emailID,
 					"blobId":    uploadResult.BlobID,
 					"mailboxId": targetMailboxID,
@@ -101,7 +96,7 @@ By default, emails are imported to the Inbox and marked as unread.`,
 
 			fmt.Printf("Imported email (ID: %s) from %s\n", emailID, emlPath)
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&mailbox, "mailbox", "", "Target mailbox ID or name (default: Inbox)")

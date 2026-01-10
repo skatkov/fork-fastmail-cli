@@ -8,13 +8,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/salmonumbrella/fastmail-cli/internal/config"
 	"github.com/salmonumbrella/fastmail-cli/internal/format"
+	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/salmonumbrella/fastmail-cli/internal/webdav"
 	"github.com/spf13/cobra"
 )
 
-func newFilesCmd(flags *rootFlags) *cobra.Command {
+func newFilesCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "files",
 		Short: "File storage operations",
@@ -24,17 +24,17 @@ Files are stored at https://myfiles.fastmail.com/ and can be accessed
 via WebDAV protocol for upload, download, and management.`,
 	}
 
-	cmd.AddCommand(newFilesListCmd(flags))
-	cmd.AddCommand(newFilesUploadCmd(flags))
-	cmd.AddCommand(newFilesDownloadCmd(flags))
-	cmd.AddCommand(newFilesMkdirCmd(flags))
-	cmd.AddCommand(newFilesDeleteCmd(flags))
-	cmd.AddCommand(newFilesMoveCmd(flags))
+	cmd.AddCommand(newFilesListCmd(app))
+	cmd.AddCommand(newFilesUploadCmd(app))
+	cmd.AddCommand(newFilesDownloadCmd(app))
+	cmd.AddCommand(newFilesMkdirCmd(app))
+	cmd.AddCommand(newFilesDeleteCmd(app))
+	cmd.AddCommand(newFilesMoveCmd(app))
 
 	return cmd
 }
 
-func newFilesListCmd(flags *rootFlags) *cobra.Command {
+func newFilesListCmd(app *App) *cobra.Command {
 	var recursive bool
 
 	cmd := &cobra.Command{
@@ -48,8 +48,8 @@ Use --recursive to list all files recursively.`,
   fastmail files list /Documents
   fastmail files list /Documents --recursive`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getWebDAVClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.WebDAVClient()
 			if err != nil {
 				return err
 			}
@@ -60,7 +60,7 @@ Use --recursive to list all files recursively.`,
 			}
 
 			if recursive {
-				return listRecursive(cmd, client, path)
+				return listRecursive(cmd, app, client, path)
 			}
 
 			files, err := client.List(cmd.Context(), path)
@@ -77,8 +77,8 @@ Use --recursive to list all files recursively.`,
 				return files[i].Name < files[j].Name
 			})
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, files)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, files)
 			}
 
 			if len(files) == 0 {
@@ -86,7 +86,7 @@ Use --recursive to list all files recursively.`,
 				return nil
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			fmt.Fprintln(tw, "NAME\tTYPE\tSIZE\tMODIFIED")
 			for _, file := range files {
 				fileType := "file"
@@ -111,7 +111,7 @@ Use --recursive to list all files recursively.`,
 			tw.Flush()
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "List files recursively")
@@ -119,7 +119,7 @@ Use --recursive to list all files recursively.`,
 	return cmd
 }
 
-func newFilesUploadCmd(flags *rootFlags) *cobra.Command {
+func newFilesUploadCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upload <local-file> [remote-path]",
 		Short: "Upload a file to file storage",
@@ -131,8 +131,8 @@ with the same name as the local file.`,
   fastmail files upload document.pdf /Documents/report.pdf
   fastmail files upload ~/Downloads/photo.jpg /Photos/`,
 		Args: cobra.RangeArgs(1, 2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getWebDAVClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.WebDAVClient()
 			if err != nil {
 				return err
 			}
@@ -163,13 +163,13 @@ with the same name as the local file.`,
 			fmt.Fprintln(os.Stderr, "File uploaded successfully")
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newFilesDownloadCmd(flags *rootFlags) *cobra.Command {
+func newFilesDownloadCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "download <remote-path> [local-file]",
 		Short: "Download a file from file storage",
@@ -181,8 +181,8 @@ directory with the same name as the remote file.`,
   fastmail files download /Documents/report.pdf ~/Downloads/report.pdf
   fastmail files download /Photos/image.jpg .`,
 		Args: cobra.RangeArgs(1, 2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getWebDAVClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.WebDAVClient()
 			if err != nil {
 				return err
 			}
@@ -208,13 +208,13 @@ directory with the same name as the remote file.`,
 			fmt.Fprintln(os.Stderr, "File downloaded successfully")
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newFilesMkdirCmd(flags *rootFlags) *cobra.Command {
+func newFilesMkdirCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mkdir <path>",
 		Short: "Create a directory",
@@ -222,8 +222,8 @@ func newFilesMkdirCmd(flags *rootFlags) *cobra.Command {
 		Example: `  fastmail files mkdir /Documents
   fastmail files mkdir /Photos/Vacation`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getWebDAVClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.WebDAVClient()
 			if err != nil {
 				return err
 			}
@@ -237,13 +237,13 @@ func newFilesMkdirCmd(flags *rootFlags) *cobra.Command {
 			fmt.Fprintf(os.Stderr, "Directory created: %s\n", dirPath)
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newFilesDeleteCmd(flags *rootFlags) *cobra.Command {
+func newFilesDeleteCmd(app *App) *cobra.Command {
 	var skipConfirmation bool
 
 	cmd := &cobra.Command{
@@ -255,8 +255,8 @@ WARNING: This operation cannot be undone. Use with caution.`,
 		Example: `  fastmail files delete /Documents/old.pdf
   fastmail files delete /OldFolder -y`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getWebDAVClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.WebDAVClient()
 			if err != nil {
 				return err
 			}
@@ -282,7 +282,7 @@ WARNING: This operation cannot be undone. Use with caution.`,
 			fmt.Fprintf(os.Stderr, "Deleted: %s\n", path)
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().BoolVarP(&skipConfirmation, "yes", "y", false, "Skip confirmation prompt")
@@ -290,7 +290,7 @@ WARNING: This operation cannot be undone. Use with caution.`,
 	return cmd
 }
 
-func newFilesMoveCmd(flags *rootFlags) *cobra.Command {
+func newFilesMoveCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "move <source> <destination>",
 		Short: "Move or rename a file or directory",
@@ -301,8 +301,8 @@ This operation will fail if the destination already exists.`,
   fastmail files move /Documents/report.pdf /Archive/
   fastmail files move /OldFolder /NewFolder`,
 		Args: cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getWebDAVClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.WebDAVClient()
 			if err != nil {
 				return err
 			}
@@ -317,29 +317,14 @@ This operation will fail if the destination already exists.`,
 			fmt.Fprintf(os.Stderr, "Moved: %s -> %s\n", source, destination)
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-// getWebDAVClient creates a WebDAV client using the configured account token
-func getWebDAVClient(flags *rootFlags) (*webdav.Client, error) {
-	account, err := requireAccount(flags)
-	if err != nil {
-		return nil, err
-	}
-
-	token, err := config.GetToken(account)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get token for %s: %w", account, err)
-	}
-
-	return webdav.NewClient(token), nil
-}
-
 // listRecursive lists files recursively
-func listRecursive(cmd *cobra.Command, client *webdav.Client, rootPath string) error {
+func listRecursive(cmd *cobra.Command, app *App, client *webdav.Client, rootPath string) error {
 	type pathInfo struct {
 		path  string
 		depth int
@@ -384,13 +369,13 @@ func listRecursive(cmd *cobra.Command, client *webdav.Client, rootPath string) e
 		}
 	}
 
-	if isJSON(ctx) {
+	if app.IsJSON(ctx) {
 		// For JSON output, just output the files
 		files := make([]webdav.FileInfo, len(allFiles))
 		for i, f := range allFiles {
 			files[i] = f.file
 		}
-		return printJSON(cmd, files)
+		return app.PrintJSON(cmd, files)
 	}
 
 	if len(allFiles) == 0 {
@@ -398,7 +383,7 @@ func listRecursive(cmd *cobra.Command, client *webdav.Client, rootPath string) e
 		return nil
 	}
 
-	tw := newTabWriter()
+	tw := outfmt.NewTabWriter()
 	fmt.Fprintln(tw, "PATH\tTYPE\tSIZE\tMODIFIED")
 	for _, item := range allFiles {
 		file := item.file

@@ -2,35 +2,30 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 
 	cerrors "github.com/salmonumbrella/fastmail-cli/internal/errors"
 	"github.com/salmonumbrella/fastmail-cli/internal/format"
 	"github.com/spf13/cobra"
 )
 
-func newEmailGetCmd(flags *rootFlags) *cobra.Command {
+func newEmailGetCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <emailId>",
 		Short: "Get email by ID",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
 
 			email, err := client.GetEmailByID(cmd.Context(), args[0])
 			if err != nil {
-				getErr := cerrors.WithContext(err, "fetching email")
-				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
-					return cerrors.WithSuggestion(getErr, cerrors.SuggestionReauth)
-				}
-				return getErr
+				return cerrors.WithContext(err, "fetching email")
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, emailToOutput(*email))
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, emailToOutput(*email))
 			}
 
 			// Text output
@@ -58,7 +53,7 @@ func newEmailGetCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd

@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/salmonumbrella/fastmail-cli/internal/format"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
+	"github.com/salmonumbrella/fastmail-cli/internal/validation"
 )
 
 func TestIsValidEmail(t *testing.T) {
@@ -49,8 +51,8 @@ func TestIsValidEmail(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isValidEmail(tt.email); got != tt.want {
-				t.Errorf("isValidEmail(%q) = %v, want %v", tt.email, got, tt.want)
+			if got := validation.IsValidEmail(tt.email); got != tt.want {
+				t.Errorf("IsValidEmail(%q) = %v, want %v", tt.email, got, tt.want)
 			}
 		})
 	}
@@ -113,9 +115,9 @@ func TestSanitizeFilename(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := sanitizeFilename(tt.input)
+			got := format.SanitizeFilename(tt.input)
 			if got != tt.want {
-				t.Errorf("sanitizeFilename(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("SanitizeFilename(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
@@ -124,18 +126,18 @@ func TestSanitizeFilename(t *testing.T) {
 func TestSanitizeFilename_WindowsPath(t *testing.T) {
 	// filepath.Base behavior is platform-specific for backslashes
 	input := "C:\\Windows\\System32\\cmd.exe"
-	result := sanitizeFilename(input)
+	result := format.SanitizeFilename(input)
 
 	if runtime.GOOS == "windows" {
 		// On Windows, backslashes are path separators
 		if result != "cmd.exe" {
-			t.Errorf("sanitizeFilename(%q) = %q, want %q on Windows", input, result, "cmd.exe")
+			t.Errorf("SanitizeFilename(%q) = %q, want %q on Windows", input, result, "cmd.exe")
 		}
 	} else {
 		// On Unix, backslashes are valid filename characters
 		// The whole string is treated as a filename (this is expected behavior)
 		if result != input {
-			t.Errorf("sanitizeFilename(%q) = %q, want %q on Unix", input, result, input)
+			t.Errorf("SanitizeFilename(%q) = %q, want %q on Unix", input, result, input)
 		}
 	}
 }
@@ -148,14 +150,14 @@ func TestSanitizeFilename_LengthLimit(t *testing.T) {
 	}
 	longName = longName + ".txt"
 
-	result := sanitizeFilename(longName)
+	result := format.SanitizeFilename(longName)
 	if len(result) > 255 {
-		t.Errorf("sanitizeFilename() returned %d bytes, want <= 255", len(result))
+		t.Errorf("SanitizeFilename() returned %d bytes, want <= 255", len(result))
 	}
 
 	// Should preserve .txt extension
 	if result[len(result)-4:] != ".txt" {
-		t.Errorf("sanitizeFilename() did not preserve extension, got %q", result[len(result)-4:])
+		t.Errorf("SanitizeFilename() did not preserve extension, got %q", result[len(result)-4:])
 	}
 }
 

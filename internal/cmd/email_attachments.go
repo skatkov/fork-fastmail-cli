@@ -4,21 +4,21 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	cerrors "github.com/salmonumbrella/fastmail-cli/internal/errors"
 	"github.com/salmonumbrella/fastmail-cli/internal/format"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
+	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
 )
 
-func newEmailAttachmentsCmd(flags *rootFlags) *cobra.Command {
+func newEmailAttachmentsCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "attachments <emailId>",
 		Short: "List attachments for an email",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -28,8 +28,8 @@ func newEmailAttachmentsCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to get attachments: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"emailId":     args[0],
 					"attachments": attachments,
 				})
@@ -40,12 +40,12 @@ func newEmailAttachmentsCmd(flags *rootFlags) *cobra.Command {
 				return nil
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			fmt.Fprintln(tw, "BLOB ID\tNAME\tTYPE\tSIZE")
 			for _, att := range attachments {
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
 					att.BlobID,
-					sanitizeTab(att.Name),
+					outfmt.SanitizeTab(att.Name),
 					att.Type,
 					format.FormatBytes(att.Size),
 				)
@@ -53,13 +53,13 @@ func newEmailAttachmentsCmd(flags *rootFlags) *cobra.Command {
 			tw.Flush()
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newEmailDownloadCmd(flags *rootFlags) *cobra.Command {
+func newEmailDownloadCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "download <emailId> <blobId> [output-file]",
 		Short: "Download an email attachment",
@@ -68,8 +68,8 @@ func newEmailDownloadCmd(flags *rootFlags) *cobra.Command {
 If output-file is not specified, the attachment will be saved with its original name
 in the current directory. You can get the blob ID from the 'attachments' command.`,
 		Args: cobra.RangeArgs(2, 3),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -106,7 +106,7 @@ in the current directory. You can get the blob ID from the 'attachments' command
 
 				// SECURITY: Sanitize auto-detected filename to prevent path traversal attacks
 				// Only applied when filename comes from email attachment metadata (untrusted source)
-				outputFile = sanitizeFilename(outputFile)
+				outputFile = format.SanitizeFilename(outputFile)
 			} else {
 				// User explicitly provided output path - respect it as-is
 				// (both absolute paths like /tmp/file.pdf and relative paths like ./file.pdf)
@@ -121,11 +121,7 @@ in the current directory. You can get the blob ID from the 'attachments' command
 			// Download the blob
 			reader, err := client.DownloadBlob(cmd.Context(), blobID)
 			if err != nil {
-				downloadErr := cerrors.WithContext(err, "downloading attachment")
-				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
-					return cerrors.WithSuggestion(downloadErr, cerrors.SuggestionReauth)
-				}
-				return downloadErr
+				return cerrors.WithContext(err, "downloading attachment")
 			}
 			defer reader.Close()
 
@@ -142,8 +138,8 @@ in the current directory. You can get the blob ID from the 'attachments' command
 				return fmt.Errorf("failed to write attachment: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"emailId":    emailID,
 					"blobId":     blobID,
 					"outputFile": outputFile,
@@ -153,7 +149,7 @@ in the current directory. You can get the blob ID from the 'attachments' command
 
 			fmt.Printf("Downloaded attachment to %s (%s)\n", outputFile, format.FormatBytes(written))
 			return nil
-		},
+		}),
 	}
 
 	return cmd

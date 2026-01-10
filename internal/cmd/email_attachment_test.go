@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"testing"
+
+	"github.com/salmonumbrella/fastmail-cli/internal/format"
 )
 
 func TestParseAttachmentFlag(t *testing.T) {
@@ -75,7 +77,7 @@ func TestParseAttachmentFlag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path, name, err := parseAttachmentFlag(tt.input)
+			path, name, err := format.ParseAttachmentFlag(tt.input)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("expected error but got none")
@@ -148,9 +150,9 @@ func TestGetMimeType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := getMimeType(tt.filename)
+			got := format.MimeType(tt.filename)
 			if got != tt.want {
-				t.Errorf("getMimeType(%q) = %q, want %q", tt.filename, got, tt.want)
+				t.Errorf("MimeType(%q) = %q, want %q", tt.filename, got, tt.want)
 			}
 		})
 	}

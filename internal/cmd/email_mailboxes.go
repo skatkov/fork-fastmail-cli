@@ -2,20 +2,19 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"strings"
 
 	cerrors "github.com/salmonumbrella/fastmail-cli/internal/errors"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
+	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
 )
 
-func newEmailMailboxesCmd(flags *rootFlags) *cobra.Command {
+func newEmailMailboxesCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mailboxes",
 		Short: "List mailboxes (folders)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -25,16 +24,16 @@ func newEmailMailboxesCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to get mailboxes: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, mailboxes)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, mailboxes)
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			fmt.Fprintln(tw, "ID\tNAME\tROLE\tUNREAD\tTOTAL")
 			for _, mb := range mailboxes {
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\n",
 					mb.ID,
-					sanitizeTab(mb.Name),
+					outfmt.SanitizeTab(mb.Name),
 					mb.Role,
 					mb.UnreadEmails,
 					mb.TotalEmails,
@@ -43,21 +42,21 @@ func newEmailMailboxesCmd(flags *rootFlags) *cobra.Command {
 			tw.Flush()
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newMailboxCreateCmd(flags *rootFlags) *cobra.Command {
+func newMailboxCreateCmd(app *App) *cobra.Command {
 	var parentID string
 
 	cmd := &cobra.Command{
 		Use:   "mailbox-create <name>",
 		Short: "Create a new mailbox (folder)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -72,13 +71,13 @@ func newMailboxCreateCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to create mailbox: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, mailbox)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, mailbox)
 			}
 
 			fmt.Printf("Created mailbox '%s' (ID: %s)\n", mailbox.Name, mailbox.ID)
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&parentID, "parent", "", "Parent mailbox ID (for nested folders)")
@@ -86,7 +85,7 @@ func newMailboxCreateCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func newMailboxDeleteCmd(flags *rootFlags) *cobra.Command {
+func newMailboxDeleteCmd(app *App) *cobra.Command {
 	var yesFlag bool
 
 	cmd := &cobra.Command{
@@ -94,8 +93,8 @@ func newMailboxDeleteCmd(flags *rootFlags) *cobra.Command {
 		Short: "Delete a mailbox (folder)",
 		Long:  "Delete a mailbox. Emails in the mailbox will be moved to trash.",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -122,14 +121,12 @@ func newMailboxDeleteCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			// Prompt for confirmation unless --yes flag is set or JSON output mode
-			if !isJSON(cmd.Context()) && !yesFlag {
-				confirmed, confirmErr := confirmPrompt(os.Stderr, fmt.Sprintf("Delete mailbox '%s' (ID: %s)? [y/N] ", mailboxName, mailboxID), "y", "yes")
-				if confirmErr != nil {
-					return confirmErr
-				}
-				if !confirmed {
-					return fmt.Errorf("cancelled")
-				}
+			confirmed, err := app.Confirm(cmd, yesFlag, fmt.Sprintf("Delete mailbox '%s' (ID: %s)? [y/N] ", mailboxName, mailboxID), "y", "yes")
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				return fmt.Errorf("cancelled")
 			}
 
 			err = client.DeleteMailbox(cmd.Context(), mailboxID)
@@ -137,15 +134,15 @@ func newMailboxDeleteCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to delete mailbox: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"deleted": mailboxID,
 				})
 			}
 
 			fmt.Printf("Deleted mailbox %s\n", mailboxID)
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().BoolVarP(&yesFlag, "yes", "y", false, "Skip confirmation prompt")
@@ -153,13 +150,13 @@ func newMailboxDeleteCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func newMailboxRenameCmd(flags *rootFlags) *cobra.Command {
+func newMailboxRenameCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mailbox-rename <mailbox-id-or-name> <new-name>",
 		Short: "Rename a mailbox (folder)",
 		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -175,8 +172,8 @@ func newMailboxRenameCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to rename mailbox: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"mailboxId": mailboxID,
 					"newName":   args[1],
 				})
@@ -184,34 +181,30 @@ func newMailboxRenameCmd(flags *rootFlags) *cobra.Command {
 
 			fmt.Printf("Renamed mailbox %s to '%s'\n", mailboxID, args[1])
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newEmailIdentitiesCmd(flags *rootFlags) *cobra.Command {
+func newEmailIdentitiesCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "identities",
 		Short: "List sending identities (aliases)",
 		Long:  "List all email identities/aliases you can send from.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
 
 			identities, err := client.GetIdentities(cmd.Context())
 			if err != nil {
-				idErr := cerrors.WithContext(err, "fetching identities")
-				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
-					return cerrors.WithSuggestion(idErr, cerrors.SuggestionReauth)
-				}
-				return idErr
+				return cerrors.WithContext(err, "fetching identities")
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, identities)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, identities)
 			}
 
 			if len(identities) == 0 {
@@ -219,7 +212,7 @@ func newEmailIdentitiesCmd(flags *rootFlags) *cobra.Command {
 				return nil
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			fmt.Fprintln(tw, "ID\tEMAIL\tNAME\tDEFAULT")
 			for _, id := range identities {
 				// MayDelete=false indicates the primary account identity
@@ -230,14 +223,14 @@ func newEmailIdentitiesCmd(flags *rootFlags) *cobra.Command {
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
 					id.ID,
 					id.Email,
-					sanitizeTab(id.Name),
+					outfmt.SanitizeTab(id.Name),
 					isDefault,
 				)
 			}
 			tw.Flush()
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd

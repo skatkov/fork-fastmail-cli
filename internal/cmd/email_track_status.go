@@ -8,11 +8,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newEmailTrackStatusCmd(_ *rootFlags) *cobra.Command {
+func newEmailTrackStatusCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show tracking configuration status",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: runE(app, func(_ *cobra.Command, _ []string, _ *App) error {
 			cfg, err := tracking.LoadConfig()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -33,7 +33,7 @@ func newEmailTrackStatusCmd(_ *rootFlags) *cobra.Command {
 			fmt.Printf("admin_configured\t%t\n", strings.TrimSpace(cfg.AdminKey) != "")
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd

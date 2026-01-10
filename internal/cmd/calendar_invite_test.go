@@ -5,8 +5,8 @@ import (
 )
 
 func TestCalendarInviteCmd_RequiresTitle(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newCalendarInviteCmd(flags)
+	app := newTestApp()
+	cmd := newCalendarInviteCmd(app)
 	cmd.SetArgs([]string{
 		"--start", "2025-12-19T15:00:00Z",
 		"--end", "2025-12-19T16:00:00Z",
@@ -25,8 +25,8 @@ func TestCalendarInviteCmd_RequiresTitle(t *testing.T) {
 }
 
 func TestCalendarInviteCmd_RequiresAttendees(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newCalendarInviteCmd(flags)
+	app := newTestApp()
+	cmd := newCalendarInviteCmd(app)
 	cmd.SetArgs([]string{
 		"--title", "Test Meeting",
 		"--start", "2025-12-19T15:00:00Z",
@@ -45,8 +45,8 @@ func TestCalendarInviteCmd_RequiresAttendees(t *testing.T) {
 }
 
 func TestCalendarInviteCmd_RequiresStart(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newCalendarInviteCmd(flags)
+	app := newTestApp()
+	cmd := newCalendarInviteCmd(app)
 	cmd.SetArgs([]string{
 		"--title", "Test Meeting",
 		"--end", "2025-12-19T16:00:00Z",
@@ -65,8 +65,8 @@ func TestCalendarInviteCmd_RequiresStart(t *testing.T) {
 }
 
 func TestCalendarInviteCmd_RequiresEnd(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newCalendarInviteCmd(flags)
+	app := newTestApp()
+	cmd := newCalendarInviteCmd(app)
 	cmd.SetArgs([]string{
 		"--title", "Test Meeting",
 		"--start", "2025-12-19T15:00:00Z",
@@ -85,8 +85,8 @@ func TestCalendarInviteCmd_RequiresEnd(t *testing.T) {
 }
 
 func TestCalendarInviteCmd_HasAllFlags(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newCalendarInviteCmd(flags)
+	app := newTestApp()
+	cmd := newCalendarInviteCmd(app)
 
 	// Verify all expected flags exist
 	expectedFlags := []string{

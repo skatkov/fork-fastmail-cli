@@ -2,23 +2,23 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 
 	cerrors "github.com/salmonumbrella/fastmail-cli/internal/errors"
 	"github.com/salmonumbrella/fastmail-cli/internal/format"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
+	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
 )
 
-func newEmailListCmd(flags *rootFlags) *cobra.Command {
+func newEmailListCmd(app *App) *cobra.Command {
 	var limit int
 	var mailboxID string
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List emails",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -35,15 +35,11 @@ func newEmailListCmd(flags *rootFlags) *cobra.Command {
 
 			emails, err := client.GetEmails(cmd.Context(), mailboxID, limit)
 			if err != nil {
-				listErr := cerrors.WithContext(err, "listing emails")
-				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
-					return cerrors.WithSuggestion(listErr, cerrors.SuggestionReauth)
-				}
-				return listErr
+				return cerrors.WithContext(err, "listing emails")
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, emailsToOutput(emails))
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, emailsToOutput(emails))
 			}
 
 			if len(emails) == 0 {
@@ -51,7 +47,7 @@ func newEmailListCmd(flags *rootFlags) *cobra.Command {
 				return nil
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			fmt.Fprintln(tw, "ID\tSUBJECT\tFROM\tDATE\tUNREAD")
 			for _, email := range emails {
 				from := format.FormatEmailAddressList(email.From)
@@ -62,8 +58,8 @@ func newEmailListCmd(flags *rootFlags) *cobra.Command {
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
 					email.ID,
-					sanitizeTab(format.Truncate(email.Subject, 50)),
-					sanitizeTab(format.Truncate(from, 30)),
+					outfmt.SanitizeTab(format.Truncate(email.Subject, 50)),
+					outfmt.SanitizeTab(format.Truncate(from, 30)),
 					date,
 					unread,
 				)
@@ -71,7 +67,7 @@ func newEmailListCmd(flags *rootFlags) *cobra.Command {
 			tw.Flush()
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 25, "Maximum number of emails to list")
@@ -80,7 +76,7 @@ func newEmailListCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func newEmailSearchCmd(flags *rootFlags) *cobra.Command {
+func newEmailSearchCmd(app *App) *cobra.Command {
 	var limit int
 	var snippets bool
 
@@ -94,8 +90,8 @@ Examples:
   fastmail email search --snippets "invoice"
   fastmail email search "subject:meeting after:2025-01-01"`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -110,19 +106,15 @@ Examples:
 			}
 
 			if err != nil {
-				searchErr := cerrors.WithContext(err, "searching emails")
-				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
-					return cerrors.WithSuggestion(searchErr, cerrors.SuggestionReauth)
-				}
-				return searchErr
+				return cerrors.WithContext(err, "searching emails")
 			}
 
-			if isJSON(cmd.Context()) {
+			if app.IsJSON(cmd.Context()) {
 				result := map[string]any{"emails": emailsToOutput(emails)}
 				if snippets && len(searchSnippets) > 0 {
 					result["snippets"] = searchSnippets
 				}
-				return printJSON(cmd, result)
+				return app.PrintJSON(cmd, result)
 			}
 
 			if len(emails) == 0 {
@@ -136,7 +128,7 @@ Examples:
 				snippetMap[s.EmailID] = s
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			fmt.Fprintln(tw, "ID\tSUBJECT\tFROM\tDATE\tUNREAD")
 			for _, email := range emails {
 				from := format.FormatEmailAddressList(email.From)
@@ -155,8 +147,8 @@ Examples:
 
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
 					email.ID,
-					sanitizeTab(format.Truncate(subject, 50)),
-					sanitizeTab(format.Truncate(from, 30)),
+					outfmt.SanitizeTab(format.Truncate(subject, 50)),
+					outfmt.SanitizeTab(format.Truncate(from, 30)),
 					date,
 					unread,
 				)
@@ -164,14 +156,14 @@ Examples:
 				// Show snippet preview if available
 				if snippets {
 					if s, ok := snippetMap[email.ID]; ok && s.Preview != "" {
-						fmt.Fprintf(tw, "\t%s\t\t\t\n", sanitizeTab(format.Truncate(s.Preview, 80)))
+						fmt.Fprintf(tw, "\t%s\t\t\t\n", outfmt.SanitizeTab(format.Truncate(s.Preview, 80)))
 					}
 				}
 			}
 			tw.Flush()
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 25, "Maximum number of results")

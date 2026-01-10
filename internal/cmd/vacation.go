@@ -6,29 +6,30 @@ import (
 	"time"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
+	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
 )
 
-func newVacationCmd(flags *rootFlags) *cobra.Command {
+func newVacationCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "vacation",
 		Aliases: []string{"vr", "auto-reply"},
 		Short:   "Vacation/auto-reply management",
 	}
 
-	cmd.AddCommand(newVacationGetCmd(flags))
-	cmd.AddCommand(newVacationSetCmd(flags))
-	cmd.AddCommand(newVacationDisableCmd(flags))
+	cmd.AddCommand(newVacationGetCmd(app))
+	cmd.AddCommand(newVacationSetCmd(app))
+	cmd.AddCommand(newVacationDisableCmd(app))
 
 	return cmd
 }
 
-func newVacationGetCmd(flags *rootFlags) *cobra.Command {
+func newVacationGetCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get",
 		Short: "Get current vacation/auto-reply settings",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -38,11 +39,11 @@ func newVacationGetCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to get vacation response: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, vr)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, vr)
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			status := "Disabled"
 			if vr.IsEnabled {
 				status = "Enabled"
@@ -66,13 +67,13 @@ func newVacationGetCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newVacationSetCmd(flags *rootFlags) *cobra.Command {
+func newVacationSetCmd(app *App) *cobra.Command {
 	var subject, body, htmlBody string
 	var fromDate, untilDate string
 	var enable bool
@@ -89,8 +90,8 @@ Examples:
   fastmail vacation set --enable --subject "Away" --body "I'm on vacation"
   fastmail vacation set --enable --from 2025-12-20 --until 2025-12-27 --body "Away for holidays"
   fastmail vacation set --enable --subject "Out of office" --from 2025-12-20 --body "I'll respond after the holidays"`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -110,7 +111,7 @@ Examples:
 			}
 
 			// Warn about unsanitized HTML
-			if htmlBody != "" && !isJSON(cmd.Context()) {
+			if htmlBody != "" && !app.IsJSON(cmd.Context()) {
 				fmt.Fprintln(os.Stderr, "Warning: HTML body is not sanitized. Ensure content is safe before enabling.")
 			}
 
@@ -128,8 +129,8 @@ Examples:
 				return fmt.Errorf("failed to set vacation response: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"status":  "updated",
 					"enabled": enable,
 				})
@@ -141,7 +142,7 @@ Examples:
 				fmt.Println("Vacation auto-reply configured (use --enable to activate)")
 			}
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().BoolVar(&enable, "enable", false, "Enable the vacation responder")
@@ -154,12 +155,12 @@ Examples:
 	return cmd
 }
 
-func newVacationDisableCmd(flags *rootFlags) *cobra.Command {
+func newVacationDisableCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "disable",
 		Short: "Disable vacation/auto-reply",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -169,8 +170,8 @@ func newVacationDisableCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to disable vacation response: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"status":  "disabled",
 					"enabled": false,
 				})
@@ -178,7 +179,7 @@ func newVacationDisableCmd(flags *rootFlags) *cobra.Command {
 
 			fmt.Println("Vacation auto-reply disabled")
 			return nil
-		},
+		}),
 	}
 
 	return cmd

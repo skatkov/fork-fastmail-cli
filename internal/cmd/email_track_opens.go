@@ -15,7 +15,7 @@ import (
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
-func newEmailTrackOpensCmd(_ *rootFlags) *cobra.Command {
+func newEmailTrackOpensCmd(app *App) *cobra.Command {
 	var to, since string
 
 	cmd := &cobra.Command{
@@ -23,7 +23,7 @@ func newEmailTrackOpensCmd(_ *rootFlags) *cobra.Command {
 		Short: "Query email opens",
 		Long:  `Query email opens by tracking ID or filter by recipient/time.`,
 		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			cfg, err := tracking.LoadConfig()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -34,12 +34,12 @@ func newEmailTrackOpensCmd(_ *rootFlags) *cobra.Command {
 
 			// Query by tracking ID
 			if len(args) > 0 && args[0] != "" {
-				return queryByTrackingID(cmd, cfg, args[0], isJSON(cmd.Context()))
+				return queryByTrackingID(cmd, cfg, args[0], app.IsJSON(cmd.Context()))
 			}
 
 			// Query via admin endpoint
-			return queryAdmin(cmd, cfg, to, since, isJSON(cmd.Context()))
-		},
+			return queryAdmin(cmd, cfg, to, since, app.IsJSON(cmd.Context()))
+		}),
 	}
 
 	cmd.Flags().StringVar(&to, "to", "", "Filter by recipient email")

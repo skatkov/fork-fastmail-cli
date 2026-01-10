@@ -15,9 +15,9 @@ func buildMaskedDryRunAlias(email string, current, next jmap.MaskedEmailState) m
 	}
 }
 
-func printMaskedDryRunSingle(cmd *cobra.Command, email string, current, next jmap.MaskedEmailState) error {
-	if isJSON(cmd.Context()) {
-		return printJSON(cmd, map[string]any{
+func printMaskedDryRunSingle(app *App, cmd *cobra.Command, email string, current, next jmap.MaskedEmailState) error {
+	if app.IsJSON(cmd.Context()) {
+		return app.PrintJSON(cmd, map[string]any{
 			"dry_run":       true,
 			"email":         email,
 			"current_state": current,
@@ -29,13 +29,13 @@ func printMaskedDryRunSingle(cmd *cobra.Command, email string, current, next jma
 	return nil
 }
 
-func printMaskedDryRunBulk(cmd *cobra.Command, domain string, next jmap.MaskedEmailState, toUpdate []jmap.MaskedEmail) error {
-	if isJSON(cmd.Context()) {
+func printMaskedDryRunBulk(app *App, cmd *cobra.Command, domain string, next jmap.MaskedEmailState, toUpdate []jmap.MaskedEmail) error {
+	if app.IsJSON(cmd.Context()) {
 		aliases := make([]map[string]any, len(toUpdate))
 		for i, alias := range toUpdate {
 			aliases[i] = buildMaskedDryRunAlias(alias.Email, alias.State, next)
 		}
-		return printJSON(cmd, map[string]any{
+		return app.PrintJSON(cmd, map[string]any{
 			"dry_run": true,
 			"domain":  domain,
 			"count":   len(toUpdate),

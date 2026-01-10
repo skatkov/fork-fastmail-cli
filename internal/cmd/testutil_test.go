@@ -119,3 +119,8 @@ func captureStderr(t *testing.T, fn func()) string {
 
 	return buf.String()
 }
+
+// newTestApp returns a minimal App for command unit tests.
+func newTestApp() *App {
+	return &App{Flags: &rootFlags{}}
+}

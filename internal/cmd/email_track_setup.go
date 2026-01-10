@@ -12,14 +12,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newEmailTrackSetupCmd(_ *rootFlags) *cobra.Command {
+func newEmailTrackSetupCmd(app *App) *cobra.Command {
 	var workerURL, trackingKey, adminKey string
 
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Set up email tracking",
 		Long:  `Configure email open tracking with your Cloudflare Worker URL and keys.`,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: runE(app, func(_ *cobra.Command, _ []string, _ *App) error {
 			cfg, err := tracking.LoadConfig()
 			if err != nil {
 				return fmt.Errorf("load tracking config: %w", err)
@@ -101,7 +101,7 @@ func newEmailTrackSetupCmd(_ *rootFlags) *cobra.Command {
 			fmt.Fprintln(os.Stderr, "  - wrangler secret put ADMIN_KEY")
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&workerURL, "worker-url", "", "Tracking worker base URL")

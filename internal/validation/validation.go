@@ -6,11 +6,11 @@ import (
 	"time"
 )
 
-var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+var simpleEmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
-// Email validates email format using a simple regex pattern
+// Email validates email format using a simple regex pattern.
 func Email(email string) error {
-	if !emailRegex.MatchString(email) {
+	if !simpleEmailRegex.MatchString(email) {
 		return fmt.Errorf("invalid email format: %s", email)
 	}
 	return nil

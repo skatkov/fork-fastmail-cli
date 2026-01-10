@@ -2,20 +2,18 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"strings"
 
 	cerrors "github.com/salmonumbrella/fastmail-cli/internal/errors"
 	"github.com/spf13/cobra"
 )
 
-func newEmailDeleteCmd(flags *rootFlags) *cobra.Command {
+func newEmailDeleteCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <emailId>",
 		Short: "Delete email (move to trash)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -25,21 +23,21 @@ func newEmailDeleteCmd(flags *rootFlags) *cobra.Command {
 				return cerrors.WithContext(err, "deleting email")
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"deleted": args[0],
 				})
 			}
 
 			fmt.Printf("Email %s moved to trash\n", args[0])
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newEmailBulkDeleteCmd(flags *rootFlags) *cobra.Command {
+func newEmailBulkDeleteCmd(app *App) *cobra.Command {
 	var dryRun bool
 	var yesFlag bool
 
@@ -47,47 +45,41 @@ func newEmailBulkDeleteCmd(flags *rootFlags) *cobra.Command {
 		Use:   "bulk-delete <emailId>...",
 		Short: "Delete multiple emails (move to trash)",
 		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
 
 			// Handle dry-run mode
 			if dryRun {
-				return printDryRunList(cmd, fmt.Sprintf("Would delete %d emails:", len(args)), "wouldDelete", args, nil)
+				return printDryRunList(app, cmd, fmt.Sprintf("Would delete %d emails:", len(args)), "wouldDelete", args, nil)
 			}
 
 			// Prompt for confirmation unless --yes flag is set or JSON output mode
-			if !isJSON(cmd.Context()) && !yesFlag {
-				confirmed, confirmErr := confirmPrompt(os.Stderr, fmt.Sprintf("Delete %d emails? [y/N] ", len(args)), "y", "yes")
-				if confirmErr != nil {
-					return confirmErr
-				}
-				if !confirmed {
-					return fmt.Errorf("cancelled")
-				}
+			confirmed, err := app.Confirm(cmd, yesFlag, fmt.Sprintf("Delete %d emails? [y/N] ", len(args)), "y", "yes")
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				return fmt.Errorf("cancelled")
 			}
 
 			// Delete emails using bulk API
 			results, err := client.DeleteEmails(cmd.Context(), args)
 			if err != nil {
-				deleteErr := cerrors.WithContext(err, "deleting emails")
-				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
-					return cerrors.WithSuggestion(deleteErr, cerrors.SuggestionReauth)
-				}
-				return deleteErr
+				return cerrors.WithContext(err, "deleting emails")
 			}
 
 			// Handle JSON output
-			if isJSON(cmd.Context()) {
+			if app.IsJSON(cmd.Context()) {
 				output := map[string]any{
 					"succeeded": results.Succeeded,
 				}
 				if len(results.Failed) > 0 {
 					output["failed"] = results.Failed
 				}
-				return printJSON(cmd, output)
+				return app.PrintJSON(cmd, output)
 			}
 
 			// Handle text output
@@ -96,7 +88,7 @@ func newEmailBulkDeleteCmd(flags *rootFlags) *cobra.Command {
 			printBulkResults("Deleted", "emails", succeededCount, failedCount, results.Failed)
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be deleted without making changes")
@@ -105,15 +97,15 @@ func newEmailBulkDeleteCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func newEmailMoveCmd(flags *rootFlags) *cobra.Command {
+func newEmailMoveCmd(app *App) *cobra.Command {
 	var targetMailbox string
 
 	cmd := &cobra.Command{
 		Use:   "move <emailId>",
 		Short: "Move email to mailbox",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -134,8 +126,8 @@ func newEmailMoveCmd(flags *rootFlags) *cobra.Command {
 				return cerrors.WithContext(err, "moving email")
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"moved":   args[0],
 					"mailbox": targetMailbox,
 				})
@@ -143,7 +135,7 @@ func newEmailMoveCmd(flags *rootFlags) *cobra.Command {
 
 			fmt.Printf("Email %s moved to mailbox %s\n", args[0], targetMailbox)
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&targetMailbox, "to", "", "Target mailbox ID or name")
@@ -151,7 +143,7 @@ func newEmailMoveCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func newEmailBulkMoveCmd(flags *rootFlags) *cobra.Command {
+func newEmailBulkMoveCmd(app *App) *cobra.Command {
 	var targetMailbox string
 	var dryRun bool
 	var yesFlag bool
@@ -160,13 +152,13 @@ func newEmailBulkMoveCmd(flags *rootFlags) *cobra.Command {
 		Use:   "bulk-move <emailId>...",
 		Short: "Move multiple emails to a mailbox",
 		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			// Validate required flags before accessing keyring
 			if targetMailbox == "" {
 				return fmt.Errorf("--to is required")
 			}
 
-			client, err := getClient(flags)
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -196,34 +188,28 @@ func newEmailBulkMoveCmd(flags *rootFlags) *cobra.Command {
 
 			// Handle dry-run mode
 			if dryRun {
-				return printDryRunList(cmd, fmt.Sprintf("Would move %d emails to %s:", len(args), mailboxName), "wouldMove", args, map[string]any{
+				return printDryRunList(app, cmd, fmt.Sprintf("Would move %d emails to %s:", len(args), mailboxName), "wouldMove", args, map[string]any{
 					"mailbox": mailboxName,
 				})
 			}
 
 			// Prompt for confirmation unless --yes flag is set or JSON output mode
-			if !isJSON(cmd.Context()) && !yesFlag {
-				confirmed, confirmErr := confirmPrompt(os.Stderr, fmt.Sprintf("Move %d emails to %s? [y/N] ", len(args), mailboxName), "y", "yes")
-				if confirmErr != nil {
-					return confirmErr
-				}
-				if !confirmed {
-					return fmt.Errorf("cancelled")
-				}
+			confirmed, err := app.Confirm(cmd, yesFlag, fmt.Sprintf("Move %d emails to %s? [y/N] ", len(args), mailboxName), "y", "yes")
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				return fmt.Errorf("cancelled")
 			}
 
 			// Move emails using bulk API
 			results, err := client.MoveEmails(cmd.Context(), args, resolvedID)
 			if err != nil {
-				moveErr := cerrors.WithContext(err, "moving emails")
-				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
-					return cerrors.WithSuggestion(moveErr, cerrors.SuggestionReauth)
-				}
-				return moveErr
+				return cerrors.WithContext(err, "moving emails")
 			}
 
 			// Handle JSON output
-			if isJSON(cmd.Context()) {
+			if app.IsJSON(cmd.Context()) {
 				output := map[string]any{
 					"mailbox":   mailboxName,
 					"succeeded": results.Succeeded,
@@ -231,7 +217,7 @@ func newEmailBulkMoveCmd(flags *rootFlags) *cobra.Command {
 				if len(results.Failed) > 0 {
 					output["failed"] = results.Failed
 				}
-				return printJSON(cmd, output)
+				return app.PrintJSON(cmd, output)
 			}
 
 			// Handle text output
@@ -240,7 +226,7 @@ func newEmailBulkMoveCmd(flags *rootFlags) *cobra.Command {
 			printBulkResults("Moved", fmt.Sprintf("emails to %s", mailboxName), succeededCount, failedCount, results.Failed)
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&targetMailbox, "to", "", "Target mailbox ID or name")
@@ -252,15 +238,15 @@ func newEmailBulkMoveCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func newEmailMarkReadCmd(flags *rootFlags) *cobra.Command {
+func newEmailMarkReadCmd(app *App) *cobra.Command {
 	var unread bool
 
 	cmd := &cobra.Command{
 		Use:   "mark-read <emailId>",
 		Short: "Mark email as read/unread",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -275,8 +261,8 @@ func newEmailMarkReadCmd(flags *rootFlags) *cobra.Command {
 				status = "unread"
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"emailId": args[0],
 					"status":  status,
 				})
@@ -284,7 +270,7 @@ func newEmailMarkReadCmd(flags *rootFlags) *cobra.Command {
 
 			fmt.Printf("Email %s marked as %s\n", args[0], status)
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().BoolVar(&unread, "unread", false, "Mark as unread instead of read")
@@ -292,7 +278,7 @@ func newEmailMarkReadCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func newEmailBulkMarkReadCmd(flags *rootFlags) *cobra.Command {
+func newEmailBulkMarkReadCmd(app *App) *cobra.Command {
 	var unread bool
 	var dryRun bool
 
@@ -300,8 +286,8 @@ func newEmailBulkMarkReadCmd(flags *rootFlags) *cobra.Command {
 		Use:   "bulk-mark-read <emailId>...",
 		Short: "Mark multiple emails as read/unread",
 		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -313,7 +299,7 @@ func newEmailBulkMarkReadCmd(flags *rootFlags) *cobra.Command {
 
 			// Handle dry-run mode
 			if dryRun {
-				return printDryRunList(cmd, fmt.Sprintf("Would mark %d emails as %s:", len(args), status), "wouldMark", args, map[string]any{
+				return printDryRunList(app, cmd, fmt.Sprintf("Would mark %d emails as %s:", len(args), status), "wouldMark", args, map[string]any{
 					"status": status,
 				})
 			}
@@ -321,15 +307,11 @@ func newEmailBulkMarkReadCmd(flags *rootFlags) *cobra.Command {
 			// Mark emails using bulk API
 			results, err := client.MarkEmailsRead(cmd.Context(), args, !unread)
 			if err != nil {
-				markErr := cerrors.WithContext(err, "marking emails")
-				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
-					return cerrors.WithSuggestion(markErr, cerrors.SuggestionReauth)
-				}
-				return markErr
+				return cerrors.WithContext(err, "marking emails")
 			}
 
 			// Handle JSON output
-			if isJSON(cmd.Context()) {
+			if app.IsJSON(cmd.Context()) {
 				output := map[string]any{
 					"status":    status,
 					"succeeded": results.Succeeded,
@@ -337,7 +319,7 @@ func newEmailBulkMarkReadCmd(flags *rootFlags) *cobra.Command {
 				if len(results.Failed) > 0 {
 					output["failed"] = results.Failed
 				}
-				return printJSON(cmd, output)
+				return app.PrintJSON(cmd, output)
 			}
 
 			// Handle text output
@@ -346,7 +328,7 @@ func newEmailBulkMarkReadCmd(flags *rootFlags) *cobra.Command {
 			printBulkResults("Marked", fmt.Sprintf("emails as %s", status), succeededCount, failedCount, results.Failed)
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().BoolVar(&unread, "unread", false, "Mark as unread instead of read")

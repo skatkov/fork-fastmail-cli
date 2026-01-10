@@ -7,10 +7,11 @@ import (
 	"strings"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
+	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
 )
 
-func newContactsCmd(flags *rootFlags) *cobra.Command {
+func newContactsCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "contacts",
 		Short: "Contacts management operations",
@@ -20,18 +21,18 @@ Note: Fastmail may use CardDAV instead of JMAP for contacts.
 If contacts are not available via JMAP, you'll receive an error.`,
 	}
 
-	cmd.AddCommand(newContactsListCmd(flags))
-	cmd.AddCommand(newContactsGetCmd(flags))
-	cmd.AddCommand(newContactsCreateCmd(flags))
-	cmd.AddCommand(newContactsUpdateCmd(flags))
-	cmd.AddCommand(newContactsDeleteCmd(flags))
-	cmd.AddCommand(newContactsSearchCmd(flags))
-	cmd.AddCommand(newContactsAddressBooksCmd(flags))
+	cmd.AddCommand(newContactsListCmd(app))
+	cmd.AddCommand(newContactsGetCmd(app))
+	cmd.AddCommand(newContactsCreateCmd(app))
+	cmd.AddCommand(newContactsUpdateCmd(app))
+	cmd.AddCommand(newContactsDeleteCmd(app))
+	cmd.AddCommand(newContactsSearchCmd(app))
+	cmd.AddCommand(newContactsAddressBooksCmd(app))
 
 	return cmd
 }
 
-func newContactsListCmd(flags *rootFlags) *cobra.Command {
+func newContactsListCmd(app *App) *cobra.Command {
 	var limit int
 	var addressbook string
 
@@ -44,8 +45,8 @@ Optionally filter by address book ID and limit the number of results.`,
 		Example: `  fastmail contacts list
   fastmail contacts list --limit 50
   fastmail contacts list --addressbook <id>`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -60,8 +61,8 @@ Optionally filter by address book ID and limit the number of results.`,
 				return contacts[i].Name < contacts[j].Name
 			})
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, contacts)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, contacts)
 			}
 
 			if len(contacts) == 0 {
@@ -69,7 +70,7 @@ Optionally filter by address book ID and limit the number of results.`,
 				return nil
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			_, _ = fmt.Fprintln(tw, "NAME\tEMAIL\tPHONE\tCOMPANY") //nolint:errcheck
 			for _, contact := range contacts {
 				email := "-"
@@ -85,16 +86,16 @@ Optionally filter by address book ID and limit the number of results.`,
 					company = "-"
 				}
 				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", //nolint:errcheck
-					sanitizeTab(contact.Name),
-					sanitizeTab(email),
-					sanitizeTab(phone),
-					sanitizeTab(company),
+					outfmt.SanitizeTab(contact.Name),
+					outfmt.SanitizeTab(email),
+					outfmt.SanitizeTab(phone),
+					outfmt.SanitizeTab(company),
 				)
 			}
 			_ = tw.Flush() //nolint:errcheck
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 100, "Maximum number of contacts to retrieve")
@@ -103,7 +104,7 @@ Optionally filter by address book ID and limit the number of results.`,
 	return cmd
 }
 
-func newContactsGetCmd(flags *rootFlags) *cobra.Command {
+func newContactsGetCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <contactId>",
 		Short: "Get a contact by ID",
@@ -111,8 +112,8 @@ func newContactsGetCmd(flags *rootFlags) *cobra.Command {
 		Example: `  fastmail contacts get <id>
   fastmail contacts get <id> --output json`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -122,8 +123,8 @@ func newContactsGetCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to get contact: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, contact)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, contact)
 			}
 
 			fmt.Printf("ID:       %s\n", contact.ID)
@@ -189,13 +190,13 @@ func newContactsGetCmd(flags *rootFlags) *cobra.Command {
 			fmt.Printf("\nUpdated: %s\n", contact.Updated.Format("2006-01-02 15:04:05"))
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newContactsCreateCmd(flags *rootFlags) *cobra.Command {
+func newContactsCreateCmd(app *App) *cobra.Command {
 	var name string
 	var email string
 	var phone string
@@ -211,12 +212,12 @@ func newContactsCreateCmd(flags *rootFlags) *cobra.Command {
 At minimum, you must provide a name. Other fields are optional.`,
 		Example: `  fastmail contacts create --name "John Doe" --email "john@example.com"
   fastmail contacts create --name "Jane Smith" --email "jane@example.com" --phone "+1-555-1234" --company "Acme Corp"`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			if name == "" {
 				return fmt.Errorf("name is required")
 			}
 
-			client, err := getClient(flags)
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -245,13 +246,13 @@ At minimum, you must provide a name. Other fields are optional.`,
 				return fmt.Errorf("failed to create contact: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, created)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, created)
 			}
 
 			fmt.Printf("Created contact: %s (ID: %s)\n", created.Name, created.ID)
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Contact name (required)")
@@ -266,7 +267,7 @@ At minimum, you must provide a name. Other fields are optional.`,
 	return cmd
 }
 
-func newContactsUpdateCmd(flags *rootFlags) *cobra.Command {
+func newContactsUpdateCmd(app *App) *cobra.Command {
 	var name string
 	var email string
 	var phone string
@@ -284,8 +285,8 @@ Only the fields you specify will be updated.`,
   fastmail contacts update <id> --email "newemail@example.com"
   fastmail contacts update <id> --company "New Corp" --job-title "CEO"`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -324,13 +325,13 @@ Only the fields you specify will be updated.`,
 				return fmt.Errorf("failed to update contact: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, updated)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, updated)
 			}
 
 			fmt.Printf("Updated contact: %s\n", updated.Name)
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Contact name")
@@ -343,7 +344,7 @@ Only the fields you specify will be updated.`,
 	return cmd
 }
 
-func newContactsDeleteCmd(flags *rootFlags) *cobra.Command {
+func newContactsDeleteCmd(app *App) *cobra.Command {
 	var yes bool
 
 	cmd := &cobra.Command{
@@ -353,7 +354,7 @@ func newContactsDeleteCmd(flags *rootFlags) *cobra.Command {
 		Example: `  fastmail contacts delete <id>
   fastmail contacts delete <id> -y`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			if !yes {
 				confirmed, err := confirmPrompt(os.Stdout, "Are you sure you want to delete this contact? (y/N): ", "y")
 				if err != nil || !confirmed {
@@ -362,7 +363,7 @@ func newContactsDeleteCmd(flags *rootFlags) *cobra.Command {
 				}
 			}
 
-			client, err := getClient(flags)
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -373,7 +374,7 @@ func newContactsDeleteCmd(flags *rootFlags) *cobra.Command {
 
 			fmt.Println("Contact deleted")
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
@@ -381,7 +382,7 @@ func newContactsDeleteCmd(flags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func newContactsSearchCmd(flags *rootFlags) *cobra.Command {
+func newContactsSearchCmd(app *App) *cobra.Command {
 	var limit int
 
 	cmd := &cobra.Command{
@@ -394,8 +395,8 @@ The query is matched against contact names, emails, and other fields.`,
   fastmail contacts search "example.com"
   fastmail contacts search "acme" --limit 20`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -410,8 +411,8 @@ The query is matched against contact names, emails, and other fields.`,
 				return contacts[i].Name < contacts[j].Name
 			})
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, contacts)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, contacts)
 			}
 
 			if len(contacts) == 0 {
@@ -419,7 +420,7 @@ The query is matched against contact names, emails, and other fields.`,
 				return nil
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			fmt.Fprintln(tw, "NAME\tEMAIL\tPHONE\tCOMPANY")
 			for _, contact := range contacts {
 				email := "-"
@@ -435,16 +436,16 @@ The query is matched against contact names, emails, and other fields.`,
 					company = "-"
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-					sanitizeTab(contact.Name),
-					sanitizeTab(email),
-					sanitizeTab(phone),
-					sanitizeTab(company),
+					outfmt.SanitizeTab(contact.Name),
+					outfmt.SanitizeTab(email),
+					outfmt.SanitizeTab(phone),
+					outfmt.SanitizeTab(company),
 				)
 			}
 			tw.Flush()
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of results")
@@ -452,15 +453,15 @@ The query is matched against contact names, emails, and other fields.`,
 	return cmd
 }
 
-func newContactsAddressBooksCmd(flags *rootFlags) *cobra.Command {
+func newContactsAddressBooksCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "addressbooks",
 		Short: "List address books",
 		Long:  `List all address books in your account.`,
 		Example: `  fastmail contacts addressbooks
   fastmail contacts addressbooks --output json`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -470,8 +471,8 @@ func newContactsAddressBooksCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to list address books: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, addressBooks)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, addressBooks)
 			}
 
 			if len(addressBooks) == 0 {
@@ -479,7 +480,7 @@ func newContactsAddressBooksCmd(flags *rootFlags) *cobra.Command {
 				return nil
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			fmt.Fprintln(tw, "ID\tNAME\tDEFAULT\tSUBSCRIBED")
 			for _, ab := range addressBooks {
 				def := ""
@@ -492,7 +493,7 @@ func newContactsAddressBooksCmd(flags *rootFlags) *cobra.Command {
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
 					ab.ID,
-					sanitizeTab(ab.Name),
+					outfmt.SanitizeTab(ab.Name),
 					def,
 					sub,
 				)
@@ -500,7 +501,7 @@ func newContactsAddressBooksCmd(flags *rootFlags) *cobra.Command {
 			tw.Flush()
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd

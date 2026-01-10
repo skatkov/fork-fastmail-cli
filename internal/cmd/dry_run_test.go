@@ -13,9 +13,10 @@ import (
 func TestPrintDryRunList_Text(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
+	app := newTestApp()
 
 	out := captureStdout(t, func() {
-		err := printDryRunList(cmd, "Would delete 2 emails:", "wouldDelete", []string{"a", "b"}, nil)
+		err := printDryRunList(app, cmd, "Would delete 2 emails:", "wouldDelete", []string{"a", "b"}, nil)
 		if err != nil {
 			t.Fatalf("printDryRunList error: %v", err)
 		}
@@ -34,9 +35,10 @@ func TestPrintDryRunList_JSON(t *testing.T) {
 	cmd := &cobra.Command{}
 	ctx := context.WithValue(context.Background(), outputModeKey, outfmt.JSON)
 	cmd.SetContext(ctx)
+	app := newTestApp()
 
 	out := captureStdout(t, func() {
-		err := printDryRunList(cmd, "ignored", "wouldMove", []string{"id1"}, map[string]any{"mailbox": "Inbox"})
+		err := printDryRunList(app, cmd, "ignored", "wouldMove", []string{"id1"}, map[string]any{"mailbox": "Inbox"})
 		if err != nil {
 			t.Fatalf("printDryRunList error: %v", err)
 		}

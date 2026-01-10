@@ -2,8 +2,8 @@ package cmd
 
 import "github.com/spf13/cobra"
 
-func printDryRunList(cmd *cobra.Command, header, key string, items []string, extra map[string]any) error {
-	if isJSON(cmd.Context()) {
+func printDryRunList(app *App, cmd *cobra.Command, header, key string, items []string, extra map[string]any) error {
+	if app.IsJSON(cmd.Context()) {
 		payload := map[string]any{
 			"dryRun": true,
 			key:      items,
@@ -11,7 +11,7 @@ func printDryRunList(cmd *cobra.Command, header, key string, items []string, ext
 		for k, v := range extra {
 			payload[k] = v
 		}
-		return printJSON(cmd, payload)
+		return app.PrintJSON(cmd, payload)
 	}
 
 	printList(header, items)

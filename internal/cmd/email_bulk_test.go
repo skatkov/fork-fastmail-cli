@@ -6,8 +6,8 @@ import (
 
 func TestEmailBulkDeleteCmd_RequiresArgs(t *testing.T) {
 	// Create the root command with a minimal flags structure
-	flags := &rootFlags{}
-	cmd := newEmailBulkDeleteCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkDeleteCmd(app)
 
 	// Set args to empty (no email IDs provided)
 	cmd.SetArgs([]string{})
@@ -41,8 +41,8 @@ func contains(s, substr string) bool {
 
 // TestEmailBulkDeleteCmd_AcceptsMultipleArgs verifies that the command accepts multiple email IDs
 func TestEmailBulkDeleteCmd_AcceptsMultipleArgs(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkDeleteCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkDeleteCmd(app)
 
 	// Verify that Args validator allows multiple arguments
 	argsValidator := cmd.Args
@@ -71,8 +71,8 @@ func TestEmailBulkDeleteCmd_AcceptsMultipleArgs(t *testing.T) {
 
 // TestEmailBulkDeleteCmd_HasRequiredFlags verifies that the command has the expected flags
 func TestEmailBulkDeleteCmd_HasRequiredFlags(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkDeleteCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkDeleteCmd(app)
 
 	// Verify --dry-run flag exists
 	dryRunFlag := cmd.Flags().Lookup("dry-run")
@@ -95,8 +95,8 @@ func TestEmailBulkDeleteCmd_HasRequiredFlags(t *testing.T) {
 
 // TestEmailBulkDeleteCmd_CommandMetadata verifies command metadata is set correctly
 func TestEmailBulkDeleteCmd_CommandMetadata(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkDeleteCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkDeleteCmd(app)
 
 	if cmd.Use != "bulk-delete <emailId>..." {
 		t.Errorf("expected Use to be 'bulk-delete <emailId>...', got: %q", cmd.Use)
@@ -126,8 +126,8 @@ func TestEmailBulkDeleteCmd_CommandMetadata(t *testing.T) {
 
 // Ensure bulk-delete is registered as a subcommand of email
 func TestEmailCmd_HasBulkDeleteSubcommand(t *testing.T) {
-	flags := &rootFlags{}
-	emailCmd := newEmailCmd(flags)
+	app := newTestApp()
+	emailCmd := newEmailCmd(app)
 
 	// Find bulk-delete subcommand
 	var found bool
@@ -145,8 +145,8 @@ func TestEmailCmd_HasBulkDeleteSubcommand(t *testing.T) {
 
 // TestEmailBulkMoveCmd_RequiresToFlag verifies that the --to flag is required
 func TestEmailBulkMoveCmd_RequiresToFlag(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkMoveCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkMoveCmd(app)
 
 	// Set args with email IDs but no --to flag
 	cmd.SetArgs([]string{"email1", "email2"})
@@ -165,8 +165,8 @@ func TestEmailBulkMoveCmd_RequiresToFlag(t *testing.T) {
 }
 
 func TestEmailBulkMoveCmd_RequiresArgs(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkMoveCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkMoveCmd(app)
 
 	// Set args to empty (no email IDs provided)
 	cmd.SetArgs([]string{})
@@ -185,8 +185,8 @@ func TestEmailBulkMoveCmd_RequiresArgs(t *testing.T) {
 }
 
 func TestEmailBulkMoveCmd_AcceptsMultipleArgs(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkMoveCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkMoveCmd(app)
 
 	// Verify that Args validator allows multiple arguments
 	argsValidator := cmd.Args
@@ -214,8 +214,8 @@ func TestEmailBulkMoveCmd_AcceptsMultipleArgs(t *testing.T) {
 }
 
 func TestEmailBulkMoveCmd_HasRequiredFlags(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkMoveCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkMoveCmd(app)
 
 	// Verify --to flag exists
 	toFlag := cmd.Flags().Lookup("to")
@@ -243,8 +243,8 @@ func TestEmailBulkMoveCmd_HasRequiredFlags(t *testing.T) {
 }
 
 func TestEmailBulkMoveCmd_CommandMetadata(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkMoveCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkMoveCmd(app)
 
 	if cmd.Use != "bulk-move <emailId>..." {
 		t.Errorf("expected Use to be 'bulk-move <emailId>...', got: %q", cmd.Use)
@@ -273,8 +273,8 @@ func TestEmailBulkMoveCmd_CommandMetadata(t *testing.T) {
 }
 
 func TestEmailCmd_HasBulkMoveSubcommand(t *testing.T) {
-	flags := &rootFlags{}
-	emailCmd := newEmailCmd(flags)
+	app := newTestApp()
+	emailCmd := newEmailCmd(app)
 
 	// Find bulk-move subcommand
 	var found bool
@@ -291,8 +291,8 @@ func TestEmailCmd_HasBulkMoveSubcommand(t *testing.T) {
 }
 
 func TestEmailBulkMarkReadCmd_RequiresArgs(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkMarkReadCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkMarkReadCmd(app)
 
 	// Set args to empty (no email IDs provided)
 	cmd.SetArgs([]string{})
@@ -311,8 +311,8 @@ func TestEmailBulkMarkReadCmd_RequiresArgs(t *testing.T) {
 }
 
 func TestEmailBulkMarkReadCmd_AcceptsMultipleArgs(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkMarkReadCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkMarkReadCmd(app)
 
 	// Verify that Args validator allows multiple arguments
 	argsValidator := cmd.Args
@@ -340,8 +340,8 @@ func TestEmailBulkMarkReadCmd_AcceptsMultipleArgs(t *testing.T) {
 }
 
 func TestEmailBulkMarkReadCmd_HasRequiredFlags(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkMarkReadCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkMarkReadCmd(app)
 
 	// Verify --unread flag exists
 	unreadFlag := cmd.Flags().Lookup("unread")
@@ -357,8 +357,8 @@ func TestEmailBulkMarkReadCmd_HasRequiredFlags(t *testing.T) {
 }
 
 func TestEmailBulkMarkReadCmd_CommandMetadata(t *testing.T) {
-	flags := &rootFlags{}
-	cmd := newEmailBulkMarkReadCmd(flags)
+	app := newTestApp()
+	cmd := newEmailBulkMarkReadCmd(app)
 
 	if cmd.Use != "bulk-mark-read <emailId>..." {
 		t.Errorf("expected Use to be 'bulk-mark-read <emailId>...', got: %q", cmd.Use)
@@ -387,8 +387,8 @@ func TestEmailBulkMarkReadCmd_CommandMetadata(t *testing.T) {
 }
 
 func TestEmailCmd_HasBulkMarkReadSubcommand(t *testing.T) {
-	flags := &rootFlags{}
-	emailCmd := newEmailCmd(flags)
+	app := newTestApp()
+	emailCmd := newEmailCmd(app)
 
 	// Find bulk-mark-read subcommand
 	var found bool

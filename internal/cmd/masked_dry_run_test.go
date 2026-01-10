@@ -15,9 +15,10 @@ func TestPrintMaskedDryRunSingle_JSON(t *testing.T) {
 	cmd := &cobra.Command{}
 	ctx := context.WithValue(context.Background(), outputModeKey, outfmt.JSON)
 	cmd.SetContext(ctx)
+	app := newTestApp()
 
 	out := captureStdout(t, func() {
-		err := printMaskedDryRunSingle(cmd, "a@example.com", jmap.MaskedEmailDisabled, jmap.MaskedEmailEnabled)
+		err := printMaskedDryRunSingle(app, cmd, "a@example.com", jmap.MaskedEmailDisabled, jmap.MaskedEmailEnabled)
 		if err != nil {
 			t.Fatalf("printMaskedDryRunSingle error: %v", err)
 		}
@@ -45,9 +46,10 @@ func TestPrintMaskedDryRunSingle_JSON(t *testing.T) {
 func TestPrintMaskedDryRunSingle_Text(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
+	app := newTestApp()
 
 	out := captureStdout(t, func() {
-		err := printMaskedDryRunSingle(cmd, "a@example.com", jmap.MaskedEmailDisabled, jmap.MaskedEmailEnabled)
+		err := printMaskedDryRunSingle(app, cmd, "a@example.com", jmap.MaskedEmailDisabled, jmap.MaskedEmailEnabled)
 		if err != nil {
 			t.Fatalf("printMaskedDryRunSingle error: %v", err)
 		}
@@ -62,6 +64,7 @@ func TestPrintMaskedDryRunBulk_JSON(t *testing.T) {
 	cmd := &cobra.Command{}
 	ctx := context.WithValue(context.Background(), outputModeKey, outfmt.JSON)
 	cmd.SetContext(ctx)
+	app := newTestApp()
 
 	toUpdate := []jmap.MaskedEmail{
 		{Email: "a@example.com", State: jmap.MaskedEmailDisabled},
@@ -69,7 +72,7 @@ func TestPrintMaskedDryRunBulk_JSON(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		err := printMaskedDryRunBulk(cmd, "example.com", jmap.MaskedEmailEnabled, toUpdate)
+		err := printMaskedDryRunBulk(app, cmd, "example.com", jmap.MaskedEmailEnabled, toUpdate)
 		if err != nil {
 			t.Fatalf("printMaskedDryRunBulk error: %v", err)
 		}
@@ -98,6 +101,7 @@ func TestPrintMaskedDryRunBulk_JSON(t *testing.T) {
 func TestPrintMaskedDryRunBulk_Text(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
+	app := newTestApp()
 
 	toUpdate := []jmap.MaskedEmail{
 		{Email: "a@example.com", State: jmap.MaskedEmailDisabled},
@@ -105,7 +109,7 @@ func TestPrintMaskedDryRunBulk_Text(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		err := printMaskedDryRunBulk(cmd, "example.com", jmap.MaskedEmailEnabled, toUpdate)
+		err := printMaskedDryRunBulk(app, cmd, "example.com", jmap.MaskedEmailEnabled, toUpdate)
 		if err != nil {
 			t.Fatalf("printMaskedDryRunBulk error: %v", err)
 		}

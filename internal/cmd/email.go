@@ -2,32 +2,32 @@ package cmd
 
 import "github.com/spf13/cobra"
 
-func newEmailCmd(flags *rootFlags) *cobra.Command {
+func newEmailCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "email",
 		Short: "Email operations",
 	}
 
-	cmd.AddCommand(newEmailListCmd(flags))
-	cmd.AddCommand(newEmailSearchCmd(flags))
-	cmd.AddCommand(newEmailGetCmd(flags))
-	cmd.AddCommand(newEmailSendCmd(flags))
-	cmd.AddCommand(newEmailDeleteCmd(flags))
-	cmd.AddCommand(newEmailBulkDeleteCmd(flags))
-	cmd.AddCommand(newEmailMoveCmd(flags))
-	cmd.AddCommand(newEmailBulkMoveCmd(flags))
-	cmd.AddCommand(newEmailMarkReadCmd(flags))
-	cmd.AddCommand(newEmailBulkMarkReadCmd(flags))
-	cmd.AddCommand(newEmailThreadCmd(flags))
-	cmd.AddCommand(newEmailAttachmentsCmd(flags))
-	cmd.AddCommand(newEmailDownloadCmd(flags))
-	cmd.AddCommand(newEmailMailboxesCmd(flags))
-	cmd.AddCommand(newMailboxCreateCmd(flags))
-	cmd.AddCommand(newMailboxDeleteCmd(flags))
-	cmd.AddCommand(newMailboxRenameCmd(flags))
-	cmd.AddCommand(newEmailImportCmd(flags))
-	cmd.AddCommand(newEmailIdentitiesCmd(flags))
-	cmd.AddCommand(newEmailTrackCmd(flags))
+	cmd.AddCommand(newEmailListCmd(app))
+	cmd.AddCommand(newEmailSearchCmd(app))
+	cmd.AddCommand(newEmailGetCmd(app))
+	cmd.AddCommand(newEmailSendCmd(app))
+	cmd.AddCommand(newEmailDeleteCmd(app))
+	cmd.AddCommand(newEmailBulkDeleteCmd(app))
+	cmd.AddCommand(newEmailMoveCmd(app))
+	cmd.AddCommand(newEmailBulkMoveCmd(app))
+	cmd.AddCommand(newEmailMarkReadCmd(app))
+	cmd.AddCommand(newEmailBulkMarkReadCmd(app))
+	cmd.AddCommand(newEmailThreadCmd(app))
+	cmd.AddCommand(newEmailAttachmentsCmd(app))
+	cmd.AddCommand(newEmailDownloadCmd(app))
+	cmd.AddCommand(newEmailMailboxesCmd(app))
+	cmd.AddCommand(newMailboxCreateCmd(app))
+	cmd.AddCommand(newMailboxDeleteCmd(app))
+	cmd.AddCommand(newMailboxRenameCmd(app))
+	cmd.AddCommand(newEmailImportCmd(app))
+	cmd.AddCommand(newEmailIdentitiesCmd(app))
+	cmd.AddCommand(newEmailTrackCmd(app))
 
 	return cmd
 }

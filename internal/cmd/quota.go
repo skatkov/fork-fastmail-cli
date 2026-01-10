@@ -6,10 +6,11 @@ import (
 
 	"github.com/salmonumbrella/fastmail-cli/internal/format"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
+	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
 )
 
-func newQuotaCmd(flags *rootFlags) *cobra.Command {
+func newQuotaCmd(app *App) *cobra.Command {
 	var formatFlag string
 
 	cmd := &cobra.Command{
@@ -24,8 +25,8 @@ Examples:
   fastmail quota                    # Show quotas with human-readable sizes
   fastmail quota --format bytes     # Show raw byte values
   fastmail quota --format human     # Explicitly use human-readable format`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -36,16 +37,16 @@ Examples:
 			}
 
 			if len(quotas) == 0 {
-				if isJSON(cmd.Context()) {
-					return printJSON(cmd, []any{})
+				if app.IsJSON(cmd.Context()) {
+					return app.PrintJSON(cmd, []any{})
 				}
 				printNoResults("No quota information available")
 				return nil
 			}
 
 			// JSON output
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, quotas)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, quotas)
 			}
 
 			// Human-readable output
@@ -57,7 +58,7 @@ Examples:
 			}
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&formatFlag, "format", "human", "Output format: human, bytes")
@@ -67,7 +68,7 @@ Examples:
 
 // displayQuota displays a single quota with formatting
 func displayQuota(quota jmap.Quota, formatMode string) {
-	tw := newTabWriter()
+	tw := outfmt.NewTabWriter()
 
 	// Display quota name/description
 	title := quota.Name

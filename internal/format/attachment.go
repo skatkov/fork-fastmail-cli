@@ -1,46 +1,15 @@
-package cmd
+package format
 
 import (
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
-// emailRegex implements RFC 5322 email validation.
-// This pattern validates the general structure of email addresses while being
-// permissive enough for real-world usage but strict enough to reject obvious attacks.
-var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9.!#$%&'*+/=?^_` + "`" + `{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$`)
-
-// isValidEmail validates email addresses using RFC 5322 compliant regex.
-// SECURITY: Rejects malformed addresses, control characters, and potential injection attempts.
-func isValidEmail(email string) bool {
-	// Length limits: RFC 5321 specifies max 254 characters for email address
-	if len(email) < 3 || len(email) > 254 {
-		return false
-	}
-
-	// SECURITY: Reject null bytes and control characters (potential injection)
-	// Covers ASCII control chars (0x00-0x1F, 0x7F) and Unicode C1 controls (0x80-0x9F)
-	for _, r := range email {
-		if r < 32 || r == 127 || (r >= 0x80 && r <= 0x9F) {
-			return false
-		}
-	}
-
-	// SECURITY: Reject angle brackets (potential header injection)
-	if strings.ContainsAny(email, "<>") {
-		return false
-	}
-
-	// Validate against RFC 5322 pattern
-	return emailRegex.MatchString(email)
-}
-
-// parseAttachmentFlag parses an attachment flag value.
+// ParseAttachmentFlag parses an attachment flag value.
 // Format: /path/to/file[:displayname]
 // Returns the file path and display name (defaults to basename if not specified).
-func parseAttachmentFlag(value string) (path, name string, err error) {
+func ParseAttachmentFlag(value string) (path, name string, err error) {
 	if value == "" {
 		return "", "", fmt.Errorf("attachment path cannot be empty")
 	}
@@ -68,8 +37,8 @@ func parseAttachmentFlag(value string) (path, name string, err error) {
 	return path, name, nil
 }
 
-// getMimeType returns the MIME type for a file based on extension.
-func getMimeType(filename string) string {
+// MimeType returns the MIME type for a file based on extension.
+func MimeType(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 	mimeTypes := map[string]string{
 		".pdf":  "application/pdf",
@@ -103,11 +72,11 @@ func getMimeType(filename string) string {
 	return "application/octet-stream"
 }
 
-// sanitizeFilename removes path components and dangerous characters to prevent
+// SanitizeFilename removes path components and dangerous characters to prevent
 // path traversal attacks. Returns only the base filename.
 // SECURITY: Handles null bytes, control characters, reserved names (Windows),
 // and enforces length limits.
-func sanitizeFilename(name string) string {
+func SanitizeFilename(name string) string {
 	// SECURITY: Remove null bytes first (can bypass filesystem checks)
 	name = strings.ReplaceAll(name, "\x00", "")
 

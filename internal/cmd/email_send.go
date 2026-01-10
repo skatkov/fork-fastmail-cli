@@ -9,10 +9,11 @@ import (
 	"github.com/salmonumbrella/fastmail-cli/internal/format"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
 	"github.com/salmonumbrella/fastmail-cli/internal/tracking"
+	"github.com/salmonumbrella/fastmail-cli/internal/validation"
 	"github.com/spf13/cobra"
 )
 
-func newEmailSendCmd(flags *rootFlags) *cobra.Command {
+func newEmailSendCmd(app *App) *cobra.Command {
 	var to, cc, bcc []string
 	var subject, body, htmlBody string
 	var draft bool
@@ -30,8 +31,8 @@ Examples:
   fastmail email send --to user@example.com --subject "Hello" --body "Hi there"
   fastmail email send --to user@example.com --subject "Report" --body "See attached" --attach report.pdf
   fastmail email send --to user@example.com --subject "Q4 Results" --attach /docs/q4.pdf:Q4-Report.pdf`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -50,7 +51,7 @@ Examples:
 			// Validate email addresses (only those provided)
 			allAddrs := append(append(to, cc...), bcc...)
 			for _, addr := range allAddrs {
-				if !isValidEmail(addr) {
+				if !validation.IsValidEmail(addr) {
 					return fmt.Errorf("invalid email address: %s", addr)
 				}
 			}
@@ -59,7 +60,7 @@ Examples:
 			var attachmentOpts []jmap.AttachmentOpts
 			for _, att := range attachments {
 				var attPath, attName string
-				attPath, attName, err = parseAttachmentFlag(att)
+				attPath, attName, err = format.ParseAttachmentFlag(att)
 				if err != nil {
 					return fmt.Errorf("invalid attachment: %w", err)
 				}
@@ -86,7 +87,7 @@ Examples:
 					return fmt.Errorf("failed to open attachment '%s': %w", attPath, err)
 				}
 
-				mimeType := getMimeType(attPath)
+				mimeType := format.MimeType(attPath)
 				var uploadResult *jmap.UploadBlobResult
 				uploadResult, err = client.UploadBlob(cmd.Context(), file, mimeType)
 				_ = file.Close()
@@ -176,8 +177,8 @@ Examples:
 					result["trackingId"] = trackingID
 				}
 
-				if isJSON(cmd.Context()) {
-					return printJSON(cmd, result)
+				if app.IsJSON(cmd.Context()) {
+					return app.PrintJSON(cmd, result)
 				}
 
 				fmt.Printf("Draft saved (ID: %s)\n", draftID)
@@ -190,15 +191,7 @@ Examples:
 			// Send the email
 			submissionID, err := client.SendEmail(cmd.Context(), opts)
 			if err != nil {
-				sendErr := cerrors.WithContext(err, "sending email")
-				if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
-					return cerrors.WithSuggestion(sendErr, cerrors.SuggestionReauth)
-				}
-				// Check for invalid from address error and provide helpful suggestion
-				if jmap.IsInvalidFromAddressError(err) {
-					return cerrors.WithSuggestion(sendErr, cerrors.SuggestionListIdentity)
-				}
-				return sendErr
+				return cerrors.WithContext(err, "sending email")
 			}
 
 			result := map[string]any{
@@ -209,8 +202,8 @@ Examples:
 				result["trackingId"] = trackingID
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, result)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, result)
 			}
 
 			fmt.Printf("Email sent successfully (submission ID: %s)\n", submissionID)
@@ -218,7 +211,7 @@ Examples:
 				fmt.Printf("Tracking ID: %s\n", trackingID)
 			}
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringSliceVar(&to, "to", nil, "Recipient email addresses")

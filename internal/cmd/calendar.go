@@ -12,10 +12,12 @@ import (
 	"github.com/salmonumbrella/fastmail-cli/internal/caldav"
 	"github.com/salmonumbrella/fastmail-cli/internal/config"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
+	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
+	"github.com/salmonumbrella/fastmail-cli/internal/validation"
 	"github.com/spf13/cobra"
 )
 
-func newCalendarCmd(flags *rootFlags) *cobra.Command {
+func newCalendarCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "calendar",
 		Short: "Calendar management operations",
@@ -25,26 +27,26 @@ Note: Fastmail may use CalDAV instead of JMAP for calendars.
 If calendars are not available via JMAP, you'll receive an error.`,
 	}
 
-	cmd.AddCommand(newCalendarListCmd(flags))
-	cmd.AddCommand(newCalendarEventsCmd(flags))
-	cmd.AddCommand(newCalendarEventGetCmd(flags))
-	cmd.AddCommand(newCalendarEventCreateCmd(flags))
-	cmd.AddCommand(newCalendarEventUpdateCmd(flags))
-	cmd.AddCommand(newCalendarEventDeleteCmd(flags))
-	cmd.AddCommand(newCalendarInviteCmd(flags))
+	cmd.AddCommand(newCalendarListCmd(app))
+	cmd.AddCommand(newCalendarEventsCmd(app))
+	cmd.AddCommand(newCalendarEventGetCmd(app))
+	cmd.AddCommand(newCalendarEventCreateCmd(app))
+	cmd.AddCommand(newCalendarEventUpdateCmd(app))
+	cmd.AddCommand(newCalendarEventDeleteCmd(app))
+	cmd.AddCommand(newCalendarInviteCmd(app))
 
 	return cmd
 }
 
-func newCalendarListCmd(flags *rootFlags) *cobra.Command {
+func newCalendarListCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List calendars",
 		Long:  `List all calendars in your account.`,
 		Example: `  fastmail calendar list
   fastmail calendar list --output json`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -59,8 +61,8 @@ func newCalendarListCmd(flags *rootFlags) *cobra.Command {
 				return calendars[i].Name < calendars[j].Name
 			})
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, calendars)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, calendars)
 			}
 
 			if len(calendars) == 0 {
@@ -68,7 +70,7 @@ func newCalendarListCmd(flags *rootFlags) *cobra.Command {
 				return nil
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			_, _ = fmt.Fprintln(tw, "ID\tNAME\tCOLOR\tVISIBLE\tSUBSCRIBED") //nolint:errcheck
 			for _, cal := range calendars {
 				visible := ""
@@ -85,7 +87,7 @@ func newCalendarListCmd(flags *rootFlags) *cobra.Command {
 				}
 				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", //nolint:errcheck
 					cal.ID,
-					sanitizeTab(cal.Name),
+					outfmt.SanitizeTab(cal.Name),
 					color,
 					visible,
 					subscribed,
@@ -94,13 +96,13 @@ func newCalendarListCmd(flags *rootFlags) *cobra.Command {
 			_ = tw.Flush() //nolint:errcheck
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newCalendarEventsCmd(flags *rootFlags) *cobra.Command {
+func newCalendarEventsCmd(app *App) *cobra.Command {
 	var calendarID string
 	var fromDate string
 	var toDate string
@@ -116,8 +118,8 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T00:00:00Z) or YYYY-MM-DD.`,
   fastmail calendar events --calendar <id>
   fastmail calendar events --from 2025-12-01 --to 2025-12-31
   fastmail calendar events --limit 50`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -146,8 +148,8 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T00:00:00Z) or YYYY-MM-DD.`,
 				return events[i].Start.Before(events[j].Start)
 			})
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, events)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, events)
 			}
 
 			if len(events) == 0 {
@@ -155,14 +157,14 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T00:00:00Z) or YYYY-MM-DD.`,
 				return nil
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			_, _ = fmt.Fprintln(tw, "ID\tTITLE\tSTART\tEND\tSTATUS") //nolint:errcheck
 			for _, event := range events {
 				startStr := formatEventTime(event.Start, event.IsAllDay)
 				endStr := formatEventTime(event.End, event.IsAllDay)
 				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", //nolint:errcheck
 					event.ID,
-					sanitizeTab(event.Title),
+					outfmt.SanitizeTab(event.Title),
 					startStr,
 					endStr,
 					event.Status,
@@ -171,7 +173,7 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T00:00:00Z) or YYYY-MM-DD.`,
 			_ = tw.Flush() //nolint:errcheck
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&calendarID, "calendar", "", "Filter by calendar ID")
@@ -182,7 +184,7 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T00:00:00Z) or YYYY-MM-DD.`,
 	return cmd
 }
 
-func newCalendarEventGetCmd(flags *rootFlags) *cobra.Command {
+func newCalendarEventGetCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "event-get <eventId>",
 		Short: "Get a calendar event by ID",
@@ -190,8 +192,8 @@ func newCalendarEventGetCmd(flags *rootFlags) *cobra.Command {
 		Example: `  fastmail calendar event-get <id>
   fastmail calendar event-get <id> --output json`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -201,8 +203,8 @@ func newCalendarEventGetCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to get event: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, event)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, event)
 			}
 
 			fmt.Printf("ID:         %s\n", event.ID)
@@ -257,13 +259,13 @@ func newCalendarEventGetCmd(flags *rootFlags) *cobra.Command {
 			fmt.Printf("\nUpdated:    %s\n", event.Updated.Format("2006-01-02 15:04:05"))
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newCalendarEventCreateCmd(flags *rootFlags) *cobra.Command {
+func newCalendarEventCreateCmd(app *App) *cobra.Command {
 	var calendarID string
 	var title string
 	var description string
@@ -283,7 +285,7 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T15:00:00Z) or YYYY-MM-DD for
 		Example: `  fastmail calendar event-create --calendar <id> --title "Meeting" --start "2025-12-19T15:00:00Z" --end "2025-12-19T16:00:00Z"
   fastmail calendar event-create --calendar <id> --title "Birthday" --start "2025-12-25" --end "2025-12-26" --all-day
   fastmail calendar event-create --calendar <id> --title "Lunch" --start "2025-12-20T12:00:00Z" --end "2025-12-20T13:00:00Z" --location "Restaurant"`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			if calendarID == "" {
 				return fmt.Errorf("--calendar is required")
 			}
@@ -311,7 +313,7 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T15:00:00Z) or YYYY-MM-DD for
 				status = "confirmed"
 			}
 
-			client, err := getClient(flags)
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -332,13 +334,13 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T15:00:00Z) or YYYY-MM-DD for
 				return fmt.Errorf("failed to create event: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, created)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, created)
 			}
 
 			fmt.Printf("Created event: %s (ID: %s)\n", created.Title, created.ID)
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&calendarID, "calendar", "", "Calendar ID (required)")
@@ -358,7 +360,7 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T15:00:00Z) or YYYY-MM-DD for
 	return cmd
 }
 
-func newCalendarEventUpdateCmd(flags *rootFlags) *cobra.Command {
+func newCalendarEventUpdateCmd(app *App) *cobra.Command {
 	var title string
 	var description string
 	var location string
@@ -376,8 +378,8 @@ Only the fields you specify will be updated.`,
   fastmail calendar event-update <id> --start "2025-12-19T16:00:00Z" --end "2025-12-19T17:00:00Z"
   fastmail calendar event-update <id> --location "Conference Room A" --description "Updated description"`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -424,13 +426,13 @@ Only the fields you specify will be updated.`,
 				return fmt.Errorf("failed to update event: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, updated)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, updated)
 			}
 
 			fmt.Printf("Updated event: %s\n", updated.Title)
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&title, "title", "", "Event title")
@@ -443,7 +445,7 @@ Only the fields you specify will be updated.`,
 	return cmd
 }
 
-func newCalendarEventDeleteCmd(flags *rootFlags) *cobra.Command {
+func newCalendarEventDeleteCmd(app *App) *cobra.Command {
 	var yes bool
 
 	cmd := &cobra.Command{
@@ -453,7 +455,7 @@ func newCalendarEventDeleteCmd(flags *rootFlags) *cobra.Command {
 		Example: `  fastmail calendar event-delete <id>
   fastmail calendar event-delete <id> -y`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			if !yes {
 				confirmed, err := confirmPrompt(os.Stdout, "Are you sure you want to delete this event? (y/N): ", "y")
 				if err != nil || !confirmed {
@@ -462,7 +464,7 @@ func newCalendarEventDeleteCmd(flags *rootFlags) *cobra.Command {
 				}
 			}
 
-			client, err := getClient(flags)
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -473,7 +475,7 @@ func newCalendarEventDeleteCmd(flags *rootFlags) *cobra.Command {
 
 			fmt.Println("Event deleted")
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
@@ -508,7 +510,7 @@ func formatEventTime(t time.Time, isAllDay bool) string {
 	return t.Format("2006-01-02 15:04")
 }
 
-func newCalendarInviteCmd(flags *rootFlags) *cobra.Command {
+func newCalendarInviteCmd(app *App) *cobra.Command {
 	var title string
 	var description string
 	var location string
@@ -527,7 +529,7 @@ Times can be in RFC3339 format (2025-12-19T15:00:00Z) or simplified format (2025
 		Example: `  fastmail calendar invite --title "Team Meeting" --start "2025-12-19T15:00:00Z" --end "2025-12-19T16:00:00Z" --attendee "colleague@example.com"
   fastmail calendar invite --title "Project Review" --start "2025-12-20T14:00" --end "2025-12-20T15:00" --attendee "alice@example.com" --attendee "bob@example.com"
   fastmail calendar invite --title "Lunch" --start "2025-12-21T12:00:00Z" --end "2025-12-21T13:00:00Z" --attendee "friend@example.com" --location "Restaurant" --description "Quarterly catch-up"`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			// Validate required flags
 			if title == "" {
 				return fmt.Errorf("--title is required")
@@ -560,13 +562,13 @@ Times can be in RFC3339 format (2025-12-19T15:00:00Z) or simplified format (2025
 
 			// Validate attendee email addresses
 			for _, email := range attendees {
-				if !isValidEmail(email) {
+				if !validation.IsValidEmail(email) {
 					return fmt.Errorf("invalid attendee email address: %s", email)
 				}
 			}
 
 			// Get credentials
-			account, err := requireAccount(flags)
+			account, err := app.RequireAccount()
 			if err != nil {
 				return err
 			}
@@ -610,8 +612,8 @@ Times can be in RFC3339 format (2025-12-19T15:00:00Z) or simplified format (2025
 				return fmt.Errorf("failed to create calendar invite: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]interface{}{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]interface{}{
 					"uid":       uid,
 					"title":     title,
 					"start":     start,
@@ -623,7 +625,7 @@ Times can be in RFC3339 format (2025-12-19T15:00:00Z) or simplified format (2025
 			fmt.Printf("Created calendar invite: %s\n", title)
 			fmt.Printf("Invitations sent to: %s\n", strings.Join(attendees, ", "))
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().StringVar(&title, "title", "", "Event title (required)")

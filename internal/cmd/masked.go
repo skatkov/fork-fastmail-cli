@@ -6,10 +6,11 @@ import (
 	"sort"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
+	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
 )
 
-func newMaskedCmd(flags *rootFlags) *cobra.Command {
+func newMaskedCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "masked",
 		Aliases: []string{"mask", "alias"},
@@ -20,18 +21,18 @@ Masked emails are disposable aliases that forward to your inbox.
 Use them for signups to protect your real email address.`,
 	}
 
-	cmd.AddCommand(newMaskedListCmd(flags))
-	cmd.AddCommand(newMaskedCreateCmd(flags))
-	cmd.AddCommand(newMaskedGetCmd(flags))
-	cmd.AddCommand(newMaskedEnableCmd(flags))
-	cmd.AddCommand(newMaskedDisableCmd(flags))
-	cmd.AddCommand(newMaskedDeleteCmd(flags))
-	cmd.AddCommand(newMaskedDescriptionCmd(flags))
+	cmd.AddCommand(newMaskedListCmd(app))
+	cmd.AddCommand(newMaskedCreateCmd(app))
+	cmd.AddCommand(newMaskedGetCmd(app))
+	cmd.AddCommand(newMaskedEnableCmd(app))
+	cmd.AddCommand(newMaskedDisableCmd(app))
+	cmd.AddCommand(newMaskedDeleteCmd(app))
+	cmd.AddCommand(newMaskedDescriptionCmd(app))
 
 	return cmd
 }
 
-func newMaskedListCmd(flags *rootFlags) *cobra.Command {
+func newMaskedListCmd(app *App) *cobra.Command {
 	var all bool
 
 	cmd := &cobra.Command{
@@ -44,8 +45,8 @@ With a domain, lists only aliases for that domain.`,
 		Example: `  fastmail masked list
   fastmail masked list example.com`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -82,8 +83,8 @@ With a domain, lists only aliases for that domain.`,
 				return aliases[i].Email < aliases[j].Email
 			})
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, aliases)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, aliases)
 			}
 
 			if len(aliases) == 0 {
@@ -95,7 +96,7 @@ With a domain, lists only aliases for that domain.`,
 				return nil
 			}
 
-			tw := newTabWriter()
+			tw := outfmt.NewTabWriter()
 			fmt.Fprintln(tw, "EMAIL\tDOMAIN\tSTATE\tDESCRIPTION")
 			for _, alias := range aliases {
 				desc := alias.Description
@@ -112,15 +113,15 @@ With a domain, lists only aliases for that domain.`,
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
 					alias.Email,
-					sanitizeTab(domain),
+					outfmt.SanitizeTab(domain),
 					alias.State,
-					sanitizeTab(desc),
+					outfmt.SanitizeTab(desc),
 				)
 			}
 			tw.Flush()
 
 			return nil
-		},
+		}),
 	}
 
 	cmd.Flags().BoolVar(&all, "all", false, "Include deleted aliases")
@@ -128,7 +129,7 @@ With a domain, lists only aliases for that domain.`,
 	return cmd
 }
 
-func newMaskedCreateCmd(flags *rootFlags) *cobra.Command {
+func newMaskedCreateCmd(app *App) *cobra.Command {
 	var description string
 
 	cmd := &cobra.Command{
@@ -142,8 +143,8 @@ The domain is normalized (paths and ports are stripped).`,
   fastmail masked create example.com "Shopping account"
   fastmail masked create https://shop.example.com/signup`,
 		Args: cobra.RangeArgs(1, 2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -170,8 +171,8 @@ The domain is normalized (paths and ports are stripped).`,
 			if len(existing) > 0 {
 				best := selectBestAlias(existing)
 
-				if isJSON(cmd.Context()) {
-					return printJSON(cmd, map[string]any{
+				if app.IsJSON(cmd.Context()) {
+					return app.PrintJSON(cmd, map[string]any{
 						"alias":   best,
 						"created": false,
 					})
@@ -193,8 +194,8 @@ The domain is normalized (paths and ports are stripped).`,
 				return fmt.Errorf("failed to create masked email: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"alias":   alias,
 					"created": true,
 				})
@@ -202,19 +203,19 @@ The domain is normalized (paths and ports are stripped).`,
 
 			fmt.Printf("Created: %s (state: %s)\n", alias.Email, alias.State)
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newMaskedGetCmd(flags *rootFlags) *cobra.Command {
+func newMaskedGetCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <email>",
 		Short: "Get details of a masked email",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -229,8 +230,8 @@ func newMaskedGetCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to get masked email: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, alias)
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, alias)
 			}
 
 			fmt.Printf("Email:       %s\n", alias.Email)
@@ -245,13 +246,13 @@ func newMaskedGetCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func newMaskedEnableCmd(flags *rootFlags) *cobra.Command {
+func newMaskedEnableCmd(app *App) *cobra.Command {
 	var domain string
 	var dryRun bool
 
@@ -267,7 +268,7 @@ Use this command to manually enable an alias.`,
   fastmail masked enable --domain example.com
   fastmail masked enable --domain example.com --dry-run`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			if len(args) == 0 && domain == "" {
 				return fmt.Errorf("either provide an email address or use --domain flag")
 			}
@@ -276,10 +277,10 @@ Use this command to manually enable an alias.`,
 			}
 
 			if domain != "" {
-				return bulkUpdateMaskedEmailState(cmd, flags, domain, jmap.MaskedEmailEnabled, dryRun)
+				return bulkUpdateMaskedEmailState(cmd, app, domain, jmap.MaskedEmailEnabled, dryRun)
 			}
-			return updateMaskedEmailState(cmd, flags, args[0], jmap.MaskedEmailEnabled, dryRun)
-		},
+			return updateMaskedEmailState(cmd, app, args[0], jmap.MaskedEmailEnabled, dryRun)
+		}),
 	}
 
 	cmd.Flags().StringVar(&domain, "domain", "", "Enable all aliases for this domain")
@@ -288,7 +289,7 @@ Use this command to manually enable an alias.`,
 	return cmd
 }
 
-func newMaskedDisableCmd(flags *rootFlags) *cobra.Command {
+func newMaskedDisableCmd(app *App) *cobra.Command {
 	var domain string
 	var dryRun bool
 
@@ -302,7 +303,7 @@ When disabled, emails sent to the alias are moved to trash.`,
   fastmail masked disable --domain example.com
   fastmail masked disable --domain example.com --dry-run`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			if len(args) == 0 && domain == "" {
 				return fmt.Errorf("either provide an email address or use --domain flag")
 			}
@@ -311,10 +312,10 @@ When disabled, emails sent to the alias are moved to trash.`,
 			}
 
 			if domain != "" {
-				return bulkUpdateMaskedEmailState(cmd, flags, domain, jmap.MaskedEmailDisabled, dryRun)
+				return bulkUpdateMaskedEmailState(cmd, app, domain, jmap.MaskedEmailDisabled, dryRun)
 			}
-			return updateMaskedEmailState(cmd, flags, args[0], jmap.MaskedEmailDisabled, dryRun)
-		},
+			return updateMaskedEmailState(cmd, app, args[0], jmap.MaskedEmailDisabled, dryRun)
+		}),
 	}
 
 	cmd.Flags().StringVar(&domain, "domain", "", "Disable all aliases for this domain")
@@ -323,7 +324,7 @@ When disabled, emails sent to the alias are moved to trash.`,
 	return cmd
 }
 
-func newMaskedDeleteCmd(flags *rootFlags) *cobra.Command {
+func newMaskedDeleteCmd(app *App) *cobra.Command {
 	var domain string
 	var dryRun bool
 
@@ -337,7 +338,7 @@ When deleted, emails sent to the alias will bounce.`,
   fastmail masked delete --domain example.com
   fastmail masked delete --domain example.com --dry-run`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			if len(args) == 0 && domain == "" {
 				return fmt.Errorf("either provide an email address or use --domain flag")
 			}
@@ -346,10 +347,10 @@ When deleted, emails sent to the alias will bounce.`,
 			}
 
 			if domain != "" {
-				return bulkUpdateMaskedEmailState(cmd, flags, domain, jmap.MaskedEmailDeleted, dryRun)
+				return bulkUpdateMaskedEmailState(cmd, app, domain, jmap.MaskedEmailDeleted, dryRun)
 			}
-			return updateMaskedEmailState(cmd, flags, args[0], jmap.MaskedEmailDeleted, dryRun)
-		},
+			return updateMaskedEmailState(cmd, app, args[0], jmap.MaskedEmailDeleted, dryRun)
+		}),
 	}
 
 	cmd.Flags().StringVar(&domain, "domain", "", "Delete all aliases for this domain")
@@ -358,13 +359,13 @@ When deleted, emails sent to the alias will bounce.`,
 	return cmd
 }
 
-func newMaskedDescriptionCmd(flags *rootFlags) *cobra.Command {
+func newMaskedDescriptionCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "description <email> <new-description>",
 		Short: "Update the description of a masked email",
 		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient(flags)
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			client, err := app.JMAPClient()
 			if err != nil {
 				return err
 			}
@@ -392,8 +393,8 @@ func newMaskedDescriptionCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("failed to update description: %w", err)
 			}
 
-			if isJSON(cmd.Context()) {
-				return printJSON(cmd, map[string]any{
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
 					"email":       email,
 					"description": description,
 					"updated":     true,
@@ -402,14 +403,14 @@ func newMaskedDescriptionCmd(flags *rootFlags) *cobra.Command {
 
 			fmt.Println("Description updated")
 			return nil
-		},
+		}),
 	}
 
 	return cmd
 }
 
-func updateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, email string, state jmap.MaskedEmailState, dryRun bool) error {
-	client, err := getClient(flags)
+func updateMaskedEmailState(cmd *cobra.Command, app *App, email string, state jmap.MaskedEmailState, dryRun bool) error {
+	client, err := app.JMAPClient()
 	if err != nil {
 		return err
 	}
@@ -432,7 +433,7 @@ func updateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, email string, 
 	action := stateAction(state)
 
 	if dryRun {
-		return printMaskedDryRunSingle(cmd, email, alias.State, state)
+		return printMaskedDryRunSingle(app, cmd, email, alias.State, state)
 	}
 
 	err = client.UpdateMaskedEmailState(cmd.Context(), alias.ID, state)
@@ -440,8 +441,8 @@ func updateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, email string, 
 		return fmt.Errorf("failed to update state: %w", err)
 	}
 
-	if isJSON(cmd.Context()) {
-		return printJSON(cmd, map[string]any{
+	if app.IsJSON(cmd.Context()) {
+		return app.PrintJSON(cmd, map[string]any{
 			"email": email,
 			"state": state,
 		})
@@ -451,8 +452,8 @@ func updateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, email string, 
 	return nil
 }
 
-func bulkUpdateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, domain string, state jmap.MaskedEmailState, dryRun bool) error {
-	client, err := getClient(flags)
+func bulkUpdateMaskedEmailState(cmd *cobra.Command, app *App, domain string, state jmap.MaskedEmailState, dryRun bool) error {
+	client, err := app.JMAPClient()
 	if err != nil {
 		return err
 	}
@@ -483,7 +484,7 @@ func bulkUpdateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, domain str
 	action := stateAction(state)
 
 	if dryRun {
-		return printMaskedDryRunBulk(cmd, domain, state, toUpdate)
+		return printMaskedDryRunBulk(app, cmd, domain, state, toUpdate)
 	}
 
 	// Perform the updates
@@ -500,8 +501,8 @@ func bulkUpdateMaskedEmailState(cmd *cobra.Command, flags *rootFlags, domain str
 		}
 	}
 
-	if isJSON(cmd.Context()) {
-		return printJSON(cmd, map[string]any{
+	if app.IsJSON(cmd.Context()) {
+		return app.PrintJSON(cmd, map[string]any{
 			"domain":    domain,
 			"state":     state,
 			"succeeded": succeeded,
