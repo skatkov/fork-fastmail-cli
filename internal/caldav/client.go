@@ -1,6 +1,7 @@
 package caldav
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/salmonumbrella/fastmail-cli/internal/transport"
 )
 
 const (
@@ -23,6 +26,7 @@ type Client struct {
 	Username   string
 	token      string // unexported - security sensitive
 	httpClient *http.Client
+	retry      transport.RetryConfig
 }
 
 // String implements fmt.Stringer with redacted sensitive fields.
@@ -40,7 +44,13 @@ func NewClient(baseURL, username, token string) *Client {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		retry: transport.DefaultRetryConfig(),
 	}
+}
+
+// SetRetryConfig sets a custom retry configuration (zero values use defaults).
+func (c *Client) SetRetryConfig(cfg transport.RetryConfig) {
+	c.retry = cfg
 }
 
 // CalendarHomeURL returns the CalDAV calendar home URL for the user
@@ -60,31 +70,54 @@ func (c *Client) AddressBookHomeURL() string {
 // doRequest performs an authenticated HTTP request using basic auth
 // The caller is responsible for closing the response body on success.
 func (c *Client) doRequest(ctx context.Context, method, url string, body io.Reader, contentType string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(body)
+		if err != nil {
+			return nil, fmt.Errorf("reading request body: %w", err)
+		}
 	}
 
-	// Set Basic Auth header (username:token)
-	auth := c.Username + ":" + c.token
-	encodedAuth := base64.StdEncoding.EncodeToString([]byte(auth))
-	req.Header.Set("Authorization", "Basic "+encodedAuth)
+	reqFn := func(ctx context.Context) (*http.Request, error) {
+		var reader io.Reader
+		if bodyBytes != nil {
+			reader = bytes.NewReader(bodyBytes)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, url, reader)
+		if err != nil {
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
 
-	// Set content type if provided
-	if contentType != "" {
-		req.Header.Set("Content-Type", contentType)
+		// Set Basic Auth header (username:token)
+		auth := c.Username + ":" + c.token
+		encodedAuth := base64.StdEncoding.EncodeToString([]byte(auth))
+		req.Header.Set("Authorization", "Basic "+encodedAuth)
+
+		// Set content type if provided
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		return req, nil
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := transport.DoWithRetry(ctx, c.httpClient, c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+		if resp.StatusCode < 400 {
+			return false, nil
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("executing request: %w", err)
 	}
 
-	// Check for error status codes
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read for error message
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, transport.NewHTTPError("CalDAV "+method, resp, bodyBytes)
 	}
 
 	return resp, nil

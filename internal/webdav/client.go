@@ -11,6 +11,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/salmonumbrella/fastmail-cli/internal/transport"
 )
 
 const (
@@ -23,6 +25,7 @@ type Client struct {
 	baseURL    string
 	httpClient *http.Client
 	token      string
+	retry      transport.RetryConfig
 }
 
 // FileInfo represents information about a file or directory
@@ -75,6 +78,7 @@ func NewClient(token string) *Client {
 			Timeout: 30 * time.Second,
 		},
 		token: token,
+		retry: transport.DefaultRetryConfig(),
 	}
 }
 
@@ -86,7 +90,13 @@ func NewClientWithBaseURL(token, baseURL string) *Client {
 			Timeout: 30 * time.Second,
 		},
 		token: token,
+		retry: transport.DefaultRetryConfig(),
 	}
+}
+
+// SetRetryConfig sets a custom retry configuration (zero values use defaults).
+func (c *Client) SetRetryConfig(cfg transport.RetryConfig) {
+	c.retry = cfg
 }
 
 // List lists files and directories at the specified path
@@ -113,16 +123,26 @@ func (c *Client) List(ctx context.Context, filePath string) ([]FileInfo, error) 
   </D:prop>
 </D:propfind>`
 
-	req, err := http.NewRequestWithContext(ctx, "PROPFIND", url, bytes.NewBufferString(propfindBody))
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+	reqFn := func(ctx context.Context) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, "PROPFIND", url, bytes.NewBufferString(propfindBody))
+		if err != nil {
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		req.Header.Set("Content-Type", "application/xml")
+		req.Header.Set("Depth", "1")
+		return req, nil
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", "application/xml")
-	req.Header.Set("Depth", "1")
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := transport.DoWithRetry(ctx, c.httpClient, c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+		if resp.StatusCode == http.StatusMultiStatus {
+			return false, nil
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("executing PROPFIND: %w", err)
 	}
@@ -130,7 +150,7 @@ func (c *Client) List(ctx context.Context, filePath string) ([]FileInfo, error) 
 
 	if resp.StatusCode != http.StatusMultiStatus {
 		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read for error message
-		return nil, fmt.Errorf("PROPFIND failed with status %d: %s", resp.StatusCode, string(body))
+		return nil, transport.NewHTTPError("PROPFIND", resp, body)
 	}
 
 	// Parse XML response
@@ -194,15 +214,30 @@ func (c *Client) Upload(ctx context.Context, localPath, remotePath string) error
 
 	url := c.baseURL + remotePath
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, file)
-	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+	reqFn := func(ctx context.Context) (*http.Request, error) {
+		if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+			return nil, fmt.Errorf("rewinding file: %w", seekErr)
+		}
+
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPut, url, file)
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating request: %w", reqErr)
+		}
+
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		req.ContentLength = stat.Size()
+		return req, nil
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.ContentLength = stat.Size()
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := transport.DoWithRetry(ctx, c.httpClient, c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+		if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
+			return false, nil
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
 	if err != nil {
 		return fmt.Errorf("uploading file: %w", err)
 	}
@@ -210,7 +245,7 @@ func (c *Client) Upload(ctx context.Context, localPath, remotePath string) error
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read for error message
-		return fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(body))
+		return transport.NewHTTPError("upload", resp, body)
 	}
 
 	return nil
@@ -225,14 +260,24 @@ func (c *Client) Download(ctx context.Context, remotePath, localPath string) err
 
 	url := c.baseURL + remotePath
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+	reqFn := func(ctx context.Context) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		return req, nil
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := transport.DoWithRetry(ctx, c.httpClient, c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+		if resp.StatusCode == http.StatusOK {
+			return false, nil
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
 	if err != nil {
 		return fmt.Errorf("downloading file: %w", err)
 	}
@@ -240,7 +285,7 @@ func (c *Client) Download(ctx context.Context, remotePath, localPath string) err
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read for error message
-		return fmt.Errorf("download failed with status %d: %s", resp.StatusCode, string(body))
+		return transport.NewHTTPError("download", resp, body)
 	}
 
 	// Create local file
@@ -270,14 +315,25 @@ func (c *Client) Mkdir(ctx context.Context, dirPath string) error {
 
 	url := c.baseURL + dirPath
 
-	req, err := http.NewRequestWithContext(ctx, "MKCOL", url, nil)
-	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+	reqFn := func(ctx context.Context) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, "MKCOL", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
+
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		return req, nil
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := transport.DoWithRetry(ctx, c.httpClient, c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+		if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
+			return false, nil
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
 	if err != nil {
 		return fmt.Errorf("creating directory: %w", err)
 	}
@@ -289,7 +345,7 @@ func (c *Client) Mkdir(ctx context.Context, dirPath string) error {
 		if resp.StatusCode == http.StatusMethodNotAllowed {
 			return fmt.Errorf("directory may already exist or path is invalid")
 		}
-		return fmt.Errorf("mkdir failed with status %d: %s", resp.StatusCode, string(body))
+		return transport.NewHTTPError("mkdir", resp, body)
 	}
 
 	return nil
@@ -304,14 +360,25 @@ func (c *Client) Delete(ctx context.Context, filePath string) error {
 
 	url := c.baseURL + filePath
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
-	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+	reqFn := func(ctx context.Context) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
+
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		return req, nil
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := transport.DoWithRetry(ctx, c.httpClient, c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+		if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted {
+			return false, nil
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
 	if err != nil {
 		return fmt.Errorf("deleting: %w", err)
 	}
@@ -322,7 +389,7 @@ func (c *Client) Delete(ctx context.Context, filePath string) error {
 		if resp.StatusCode == http.StatusNotFound {
 			return fmt.Errorf("file or directory not found")
 		}
-		return fmt.Errorf("delete failed with status %d: %s", resp.StatusCode, string(body))
+		return transport.NewHTTPError("delete", resp, body)
 	}
 
 	return nil
@@ -341,16 +408,27 @@ func (c *Client) Move(ctx context.Context, source, destination string) error {
 	sourceURL := c.baseURL + source
 	destinationURL := c.baseURL + destination
 
-	req, err := http.NewRequestWithContext(ctx, "MOVE", sourceURL, nil)
-	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+	reqFn := func(ctx context.Context) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, "MOVE", sourceURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
+
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		req.Header.Set("Destination", destinationURL)
+		req.Header.Set("Overwrite", "F") // Don't overwrite existing files
+		return req, nil
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Destination", destinationURL)
-	req.Header.Set("Overwrite", "F") // Don't overwrite existing files
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := transport.DoWithRetry(ctx, c.httpClient, c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+		if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
+			return false, nil
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
 	if err != nil {
 		return fmt.Errorf("moving: %w", err)
 	}
@@ -364,7 +442,7 @@ func (c *Client) Move(ctx context.Context, source, destination string) error {
 		if resp.StatusCode == http.StatusPreconditionFailed {
 			return fmt.Errorf("destination already exists")
 		}
-		return fmt.Errorf("move failed with status %d: %s", resp.StatusCode, string(body))
+		return transport.NewHTTPError("move", resp, body)
 	}
 
 	return nil

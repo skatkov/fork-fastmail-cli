@@ -7,13 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	mathrand "math/rand"
-	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/salmonumbrella/fastmail-cli/internal/transport"
 )
 
 const (
@@ -23,10 +22,10 @@ const (
 	// SessionPath is the path to the JMAP session endpoint
 	SessionPath = "/jmap/session"
 
-	// Default retry configuration values
-	DefaultMaxRetries   = 3
-	DefaultInitialDelay = 1 * time.Second
-	DefaultMaxDelay     = 30 * time.Second
+	// Default retry configuration values (shared with transport)
+	DefaultMaxRetries   = transport.DefaultMaxRetries
+	DefaultInitialDelay = transport.DefaultInitialDelay
+	DefaultMaxDelay     = transport.DefaultMaxDelay
 
 	// MaxUploadSize is the maximum size for blob uploads (50MB)
 	MaxUploadSize = 50 * 1024 * 1024
@@ -36,25 +35,13 @@ const (
 	DefaultCircuitBreakerResetAfter = 30 * time.Second
 )
 
-// RetryConfig configures retry behavior for JMAP requests
-type RetryConfig struct {
-	// MaxRetries is the maximum number of retry attempts (default: 3)
-	MaxRetries int
-
-	// InitialDelay is the initial delay before the first retry (default: 1s)
-	InitialDelay time.Duration
-
-	// MaxDelay is the maximum delay between retries (default: 30s)
-	MaxDelay time.Duration
-}
+// RetryConfig configures retry behavior for JMAP requests.
+type RetryConfig = transport.RetryConfig
 
 // DefaultRetryConfig returns a RetryConfig with sensible defaults
 func DefaultRetryConfig() *RetryConfig {
-	return &RetryConfig{
-		MaxRetries:   DefaultMaxRetries,
-		InitialDelay: DefaultInitialDelay,
-		MaxDelay:     DefaultMaxDelay,
-	}
+	cfg := transport.DefaultRetryConfig()
+	return &cfg
 }
 
 // circuitBreaker implements a circuit breaker pattern to prevent cascading failures
@@ -188,62 +175,6 @@ func (c *Client) SetRetryConfig(config *RetryConfig) {
 	}
 }
 
-// isRetriableHTTPError checks if an error should trigger a retry (network errors only)
-func isRetriableHTTPError(err error) bool {
-	// Network timeout errors are retriable
-	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-		return true
-	}
-	return false
-}
-
-// isRetriableStatus checks if an HTTP status code should trigger a retry
-func isRetriableStatus(statusCode int) bool {
-	switch statusCode {
-	case http.StatusTooManyRequests, // 429
-		http.StatusInternalServerError, // 500
-		http.StatusBadGateway,          // 502
-		http.StatusServiceUnavailable,  // 503
-		http.StatusGatewayTimeout:      // 504
-		return true
-	default:
-		return false
-	}
-}
-
-// getRetryDelay calculates the delay before the next retry, respecting Retry-After header
-func (c *Client) getRetryDelay(attempt int, resp *http.Response) time.Duration {
-	// Check for Retry-After header
-	if resp != nil {
-		if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
-			// Try parsing as seconds (integer)
-			if seconds, err := strconv.Atoi(retryAfter); err == nil {
-				delay := time.Duration(seconds) * time.Second
-				if delay > c.retry.MaxDelay {
-					return c.retry.MaxDelay
-				}
-				return delay
-			}
-			// Try parsing as HTTP-date (we'll just use exponential backoff if this fails)
-		}
-	}
-
-	// Exponential backoff: initialDelay * 2^attempt
-	delay := c.retry.InitialDelay * (1 << uint(attempt))
-
-	// Add jitter (±20%) to prevent thundering herd
-	jitterRange := int64(delay) / 5 // 20% of delay
-	if jitterRange > 0 {
-		jitter := time.Duration(mathrand.Int63n(jitterRange*2) - jitterRange)
-		delay = delay + jitter
-	}
-
-	if delay > c.retry.MaxDelay {
-		delay = c.retry.MaxDelay
-	}
-	return delay
-}
-
 // generateIdempotencyKey generates a random 16-byte hex string for idempotency
 func generateIdempotencyKey() string {
 	b := make([]byte, 16)
@@ -286,123 +217,81 @@ func (c *Client) GetSession(ctx context.Context) (*Session, error) {
 
 	// Build session URL
 	sessionURL := c.baseURL + SessionPath
-
-	var lastErr error
-	var resp *http.Response
-
-	// Retry loop
-	for attempt := 0; attempt <= c.retry.MaxRetries; attempt++ {
-		// Create request
+	reqFn := func(ctx context.Context) (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, sessionURL, nil)
 		if err != nil {
 			return nil, fmt.Errorf("creating session request: %w", err)
 		}
-
-		// Add authorization header
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		req.Header.Set("Content-Type", "application/json")
-
-		// Execute request
-		resp, err = c.http.Do(req)
-		if err != nil {
-			// Check if error is retriable
-			if !isRetriableHTTPError(err) {
-				return nil, fmt.Errorf("fetching session: %w", err)
-			}
-
-			lastErr = err
-			if attempt < c.retry.MaxRetries {
-				delay := c.getRetryDelay(attempt, nil)
-				select {
-				case <-time.After(delay):
-					continue
-				case <-ctx.Done():
-					return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-				}
-			}
-			continue
-		}
-
-		// Check response status
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read for error message
-			_ = resp.Body.Close()
-
-			// Record failure for 5xx errors (server errors)
-			if resp.StatusCode >= 500 && resp.StatusCode < 600 {
-				c.circuitBreaker.recordFailure()
-			}
-
-			// Check for 429 rate limiting
-			if resp.StatusCode == http.StatusTooManyRequests {
-				retryAfter := c.getRetryDelay(attempt, resp)
-				return nil, &RateLimitError{RetryAfter: retryAfter}
-			}
-
-			// Check if status is retriable
-			if !isRetriableStatus(resp.StatusCode) {
-				return nil, fmt.Errorf("session request failed with status %d: %s", resp.StatusCode, string(body))
-			}
-
-			lastErr = fmt.Errorf("session request failed with status %d: %s", resp.StatusCode, string(body))
-			if attempt < c.retry.MaxRetries {
-				delay := c.getRetryDelay(attempt, resp)
-				select {
-				case <-time.After(delay):
-					continue
-				case <-ctx.Done():
-					return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-				}
-			}
-			continue
-		}
-
-		// Success - parse session response
-		defer func() { _ = resp.Body.Close() }()
-
-		var sessionData struct {
-			APIUrl       string                    `json:"apiUrl"`
-			Accounts     map[string]map[string]any `json:"accounts"`
-			Capabilities map[string]any            `json:"capabilities"`
-			DownloadURL  string                    `json:"downloadUrl"`
-			UploadURL    string                    `json:"uploadUrl"`
-		}
-
-		if err := json.NewDecoder(resp.Body).Decode(&sessionData); err != nil {
-			return nil, fmt.Errorf("decoding session response: %w", err)
-		}
-
-		// Extract the first account ID (Fastmail typically has one account)
-		var accountID string
-		for id := range sessionData.Accounts {
-			accountID = id
-			break
-		}
-
-		if accountID == "" {
-			return nil, ErrNoAccounts
-		}
-
-		// Build and cache session
-		c.session = &Session{
-			APIUrl:       sessionData.APIUrl,
-			AccountID:    accountID,
-			Capabilities: sessionData.Capabilities,
-			DownloadURL:  sessionData.DownloadURL,
-			UploadURL:    sessionData.UploadURL,
-		}
-
-		// Record the time of successful session fetch
-		c.sessionFetch = time.Now()
-
-		// Record success in circuit breaker
-		c.circuitBreaker.recordSuccess()
-
-		return c.session, nil
+		return req, nil
 	}
 
-	// All retries exhausted
-	return nil, fmt.Errorf("session request failed after %d retries: %w", c.retry.MaxRetries, lastErr)
+	resp, err := transport.DoWithRetry(ctx, c.http, *c.retry, reqFn, func(attempt int, resp *http.Response) (bool, error) {
+		if resp.StatusCode == http.StatusOK {
+			return false, nil
+		}
+		if resp.StatusCode >= 500 && resp.StatusCode < 600 {
+			c.circuitBreaker.recordFailure()
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			retryAfter := transport.RetryDelay(*c.retry, attempt, resp)
+			return false, &RateLimitError{RetryAfter: retryAfter}
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("fetching session: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read for error message
+		return nil, transport.NewHTTPError("session request", resp, body)
+	}
+
+	var sessionData struct {
+		APIUrl       string                    `json:"apiUrl"`
+		Accounts     map[string]map[string]any `json:"accounts"`
+		Capabilities map[string]any            `json:"capabilities"`
+		DownloadURL  string                    `json:"downloadUrl"`
+		UploadURL    string                    `json:"uploadUrl"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&sessionData); err != nil {
+		return nil, fmt.Errorf("decoding session response: %w", err)
+	}
+
+	// Extract the first account ID (Fastmail typically has one account)
+	var accountID string
+	for id := range sessionData.Accounts {
+		accountID = id
+		break
+	}
+
+	if accountID == "" {
+		return nil, ErrNoAccounts
+	}
+
+	// Build and cache session
+	c.session = &Session{
+		APIUrl:       sessionData.APIUrl,
+		AccountID:    accountID,
+		Capabilities: sessionData.Capabilities,
+		DownloadURL:  sessionData.DownloadURL,
+		UploadURL:    sessionData.UploadURL,
+	}
+
+	// Record the time of successful session fetch
+	c.sessionFetch = time.Now()
+
+	// Record success in circuit breaker
+	c.circuitBreaker.recordSuccess()
+
+	return c.session, nil
 }
 
 // MakeRequest executes a JMAP request and returns the response
@@ -437,97 +326,54 @@ func (c *Client) MakeRequest(ctx context.Context, req *Request) (*Response, erro
 		}
 	}
 
-	var lastErr error
-	var httpResp *http.Response
-
-	// Retry loop
-	for attempt := 0; attempt <= c.retry.MaxRetries; attempt++ {
-		// Create HTTP request with fresh body reader for each attempt
+	reqFn := func(ctx context.Context) (*http.Request, error) {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, session.APIUrl, bytes.NewReader(body))
 		if err != nil {
 			return nil, fmt.Errorf("creating request: %w", err)
 		}
-
-		// Add headers
 		httpReq.Header.Set("Authorization", "Bearer "+c.token)
 		httpReq.Header.Set("Content-Type", "application/json")
-
-		// Add idempotency key for write operations
 		if idempotencyKey != "" {
 			httpReq.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-
-		// Execute request
-		httpResp, err = c.http.Do(httpReq)
-		if err != nil {
-			// Check if error is retriable
-			if !isRetriableHTTPError(err) {
-				return nil, fmt.Errorf("executing request: %w", err)
-			}
-
-			lastErr = err
-			if attempt < c.retry.MaxRetries {
-				delay := c.getRetryDelay(attempt, nil)
-				select {
-				case <-time.After(delay):
-					continue
-				case <-ctx.Done():
-					return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-				}
-			}
-			continue
-		}
-
-		// Check response status
-		if httpResp.StatusCode != http.StatusOK {
-			bodyBytes, _ := io.ReadAll(httpResp.Body) //nolint:errcheck // best-effort read for error message
-			_ = httpResp.Body.Close()
-
-			// Record failure for 5xx errors (server errors)
-			if httpResp.StatusCode >= 500 && httpResp.StatusCode < 600 {
-				c.circuitBreaker.recordFailure()
-			}
-
-			// Check for 429 rate limiting
-			if httpResp.StatusCode == http.StatusTooManyRequests {
-				retryAfter := c.getRetryDelay(attempt, httpResp)
-				return nil, &RateLimitError{RetryAfter: retryAfter}
-			}
-
-			// Check if status is retriable
-			if !isRetriableStatus(httpResp.StatusCode) {
-				return nil, fmt.Errorf("JMAP request failed with status %d: %s", httpResp.StatusCode, string(bodyBytes))
-			}
-
-			lastErr = fmt.Errorf("JMAP request failed with status %d: %s", httpResp.StatusCode, string(bodyBytes))
-			if attempt < c.retry.MaxRetries {
-				delay := c.getRetryDelay(attempt, httpResp)
-				select {
-				case <-time.After(delay):
-					continue
-				case <-ctx.Done():
-					return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-				}
-			}
-			continue
-		}
-
-		// Success - parse response
-		defer func() { _ = httpResp.Body.Close() }()
-
-		var response Response
-		if err := json.NewDecoder(httpResp.Body).Decode(&response); err != nil {
-			return nil, fmt.Errorf("decoding response: %w", err)
-		}
-
-		// Record success in circuit breaker
-		c.circuitBreaker.recordSuccess()
-
-		return &response, nil
+		return httpReq, nil
 	}
 
-	// All retries exhausted
-	return nil, fmt.Errorf("JMAP request failed after %d retries: %w", c.retry.MaxRetries, lastErr)
+	httpResp, err := transport.DoWithRetry(ctx, c.http, *c.retry, reqFn, func(attempt int, resp *http.Response) (bool, error) {
+		if resp.StatusCode == http.StatusOK {
+			return false, nil
+		}
+		if resp.StatusCode >= 500 && resp.StatusCode < 600 {
+			c.circuitBreaker.recordFailure()
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			retryAfter := transport.RetryDelay(*c.retry, attempt, resp)
+			return false, &RateLimitError{RetryAfter: retryAfter}
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("executing request: %w", err)
+	}
+	defer func() { _ = httpResp.Body.Close() }()
+
+	if httpResp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(httpResp.Body) //nolint:errcheck // best-effort read for error message
+		return nil, transport.NewHTTPError("JMAP request", httpResp, bodyBytes)
+	}
+
+	var response Response
+	if err := json.NewDecoder(httpResp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+
+	// Record success in circuit breaker
+	c.circuitBreaker.recordSuccess()
+
+	return &response, nil
 }
 
 // ClearSession clears the cached session, forcing a new session fetch on next request
@@ -565,70 +411,36 @@ func (c *Client) DownloadBlob(ctx context.Context, blobID string) (io.ReadCloser
 	downloadURL = strings.Replace(downloadURL, "{name}", "attachment", 1)
 	downloadURL = strings.Replace(downloadURL, "{type}", "application/octet-stream", 1)
 
-	var lastErr error
-	var resp *http.Response
-
-	// Retry loop
-	for attempt := 0; attempt <= c.retry.MaxRetries; attempt++ {
-		// Create HTTP request
+	reqFn := func(ctx context.Context) (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 		if err != nil {
 			return nil, fmt.Errorf("creating download request: %w", err)
 		}
-
-		// Add authorization header
 		req.Header.Set("Authorization", "Bearer "+c.token)
-
-		// Execute request
-		resp, err = c.http.Do(req)
-		if err != nil {
-			// Check if error is retriable
-			if !isRetriableHTTPError(err) {
-				return nil, fmt.Errorf("downloading blob: %w", err)
-			}
-
-			lastErr = err
-			if attempt < c.retry.MaxRetries {
-				delay := c.getRetryDelay(attempt, nil)
-				select {
-				case <-time.After(delay):
-					continue
-				case <-ctx.Done():
-					return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-				}
-			}
-			continue
-		}
-
-		// Check response status
-		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
-
-			// Check if status is retriable
-			if !isRetriableStatus(resp.StatusCode) {
-				return nil, fmt.Errorf("download failed with status %d", resp.StatusCode)
-			}
-
-			lastErr = fmt.Errorf("download failed with status %d", resp.StatusCode)
-			if attempt < c.retry.MaxRetries {
-				delay := c.getRetryDelay(attempt, resp)
-				select {
-				case <-time.After(delay):
-					continue
-				case <-ctx.Done():
-					return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-				}
-			}
-			continue
-		}
-
-		// Success - return the body as a ReadCloser
-		// The caller is responsible for closing it
-		return resp.Body, nil
+		return req, nil
 	}
 
-	// All retries exhausted
-	return nil, fmt.Errorf("download failed after %d retries: %w", c.retry.MaxRetries, lastErr)
+	resp, err := transport.DoWithRetry(ctx, c.http, *c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+		if resp.StatusCode == http.StatusOK {
+			return false, nil
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("downloading blob: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read for error message
+		_ = resp.Body.Close()
+		return nil, transport.NewHTTPError("download", resp, body)
+	}
+
+	// Success - return the body as a ReadCloser (caller closes it).
+	return resp.Body, nil
 }
 
 // UploadBlobResult contains the response from a blob upload
@@ -655,9 +467,6 @@ func (c *Client) UploadBlob(ctx context.Context, reader io.Reader, contentType s
 	// Build upload URL by replacing {accountId} placeholder
 	uploadURL := strings.Replace(session.UploadURL, "{accountId}", session.AccountID, 1)
 
-	var lastErr error
-	var resp *http.Response
-
 	// Read content into buffer for potential retries, with size limit
 	limitedReader := io.LimitReader(reader, MaxUploadSize+1)
 	content, err := io.ReadAll(limitedReader)
@@ -670,8 +479,7 @@ func (c *Client) UploadBlob(ctx context.Context, reader io.Reader, contentType s
 		return nil, fmt.Errorf("upload content size exceeds maximum allowed size of %d bytes (50MB)", MaxUploadSize)
 	}
 
-	// Retry loop
-	for attempt := 0; attempt <= c.retry.MaxRetries; attempt++ {
+	reqFn := func(ctx context.Context) (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(content))
 		if err != nil {
 			return nil, fmt.Errorf("creating upload request: %w", err)
@@ -679,59 +487,32 @@ func (c *Client) UploadBlob(ctx context.Context, reader io.Reader, contentType s
 
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		req.Header.Set("Content-Type", contentType)
-
-		resp, err = c.http.Do(req)
-		if err != nil {
-			if !isRetriableHTTPError(err) {
-				return nil, fmt.Errorf("uploading blob: %w", err)
-			}
-
-			lastErr = err
-			if attempt < c.retry.MaxRetries {
-				delay := c.getRetryDelay(attempt, nil)
-				select {
-				case <-time.After(delay):
-					continue
-				case <-ctx.Done():
-					return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-				}
-			}
-			continue
-		}
-
-		// Defer closing the response body immediately after successful request
-		defer func() { _ = resp.Body.Close() }()
-
-		// Check response status (201 Created is success for uploads)
-		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read for error message
-
-			if !isRetriableStatus(resp.StatusCode) {
-				return nil, fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(body))
-			}
-
-			lastErr = fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(body))
-			if attempt < c.retry.MaxRetries {
-				delay := c.getRetryDelay(attempt, resp)
-				select {
-				case <-time.After(delay):
-					continue
-				case <-ctx.Done():
-					return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-				}
-			}
-			continue
-		}
-
-		// Success - parse response
-
-		var result UploadBlobResult
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return nil, fmt.Errorf("decoding upload response: %w", err)
-		}
-
-		return &result, nil
+		return req, nil
 	}
 
-	return nil, fmt.Errorf("upload failed after %d retries: %w", c.retry.MaxRetries, lastErr)
+	resp, err := transport.DoWithRetry(ctx, c.http, *c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+		if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
+			return false, nil
+		}
+		if transport.IsRetriableStatus(resp.StatusCode) {
+			return true, nil
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("uploading blob: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read for error message
+		return nil, transport.NewHTTPError("upload", resp, body)
+	}
+
+	var result UploadBlobResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decoding upload response: %w", err)
+	}
+
+	return &result, nil
 }
