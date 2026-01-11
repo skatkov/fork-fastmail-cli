@@ -39,9 +39,8 @@ const (
 type RetryConfig = transport.RetryConfig
 
 // DefaultRetryConfig returns a RetryConfig with sensible defaults
-func DefaultRetryConfig() *RetryConfig {
-	cfg := transport.DefaultRetryConfig()
-	return &cfg
+func DefaultRetryConfig() RetryConfig {
+	return transport.DefaultRetryConfig()
 }
 
 // circuitBreaker implements a circuit breaker pattern to prevent cascading failures
@@ -128,7 +127,7 @@ type Client struct {
 	sessionTTL     time.Duration
 	sessionMu      sync.RWMutex
 	http           *http.Client
-	retry          *RetryConfig
+	retry          RetryConfig
 	circuitBreaker *circuitBreaker
 }
 
@@ -166,13 +165,9 @@ func NewClientWithBaseURL(token, baseURL string) *Client {
 	}
 }
 
-// SetRetryConfig sets a custom retry configuration (nil = use defaults)
-func (c *Client) SetRetryConfig(config *RetryConfig) {
-	if config == nil {
-		c.retry = DefaultRetryConfig()
-	} else {
-		c.retry = config
-	}
+// SetRetryConfig sets a custom retry configuration (zero values use defaults).
+func (c *Client) SetRetryConfig(cfg RetryConfig) {
+	c.retry = cfg
 }
 
 // generateIdempotencyKey generates a random 16-byte hex string for idempotency
@@ -227,7 +222,7 @@ func (c *Client) GetSession(ctx context.Context) (*Session, error) {
 		return req, nil
 	}
 
-	resp, err := transport.DoWithRetry(ctx, c.http, *c.retry, reqFn, func(attempt int, resp *http.Response) (bool, error) {
+	resp, err := transport.DoWithRetry(ctx, c.http, c.retry, reqFn, func(attempt int, resp *http.Response) (bool, error) {
 		if resp.StatusCode == http.StatusOK {
 			return false, nil
 		}
@@ -235,7 +230,7 @@ func (c *Client) GetSession(ctx context.Context) (*Session, error) {
 			c.circuitBreaker.recordFailure()
 		}
 		if resp.StatusCode == http.StatusTooManyRequests {
-			retryAfter := transport.RetryDelay(*c.retry, attempt, resp)
+			retryAfter := transport.RetryDelay(c.retry, attempt, resp)
 			return false, &RateLimitError{RetryAfter: retryAfter}
 		}
 		if transport.IsRetriableStatus(resp.StatusCode) {
@@ -339,7 +334,7 @@ func (c *Client) MakeRequest(ctx context.Context, req *Request) (*Response, erro
 		return httpReq, nil
 	}
 
-	httpResp, err := transport.DoWithRetry(ctx, c.http, *c.retry, reqFn, func(attempt int, resp *http.Response) (bool, error) {
+	httpResp, err := transport.DoWithRetry(ctx, c.http, c.retry, reqFn, func(attempt int, resp *http.Response) (bool, error) {
 		if resp.StatusCode == http.StatusOK {
 			return false, nil
 		}
@@ -347,7 +342,7 @@ func (c *Client) MakeRequest(ctx context.Context, req *Request) (*Response, erro
 			c.circuitBreaker.recordFailure()
 		}
 		if resp.StatusCode == http.StatusTooManyRequests {
-			retryAfter := transport.RetryDelay(*c.retry, attempt, resp)
+			retryAfter := transport.RetryDelay(c.retry, attempt, resp)
 			return false, &RateLimitError{RetryAfter: retryAfter}
 		}
 		if transport.IsRetriableStatus(resp.StatusCode) {
@@ -420,7 +415,7 @@ func (c *Client) DownloadBlob(ctx context.Context, blobID string) (io.ReadCloser
 		return req, nil
 	}
 
-	resp, err := transport.DoWithRetry(ctx, c.http, *c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+	resp, err := transport.DoWithRetry(ctx, c.http, c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
 		if resp.StatusCode == http.StatusOK {
 			return false, nil
 		}
@@ -490,7 +485,7 @@ func (c *Client) UploadBlob(ctx context.Context, reader io.Reader, contentType s
 		return req, nil
 	}
 
-	resp, err := transport.DoWithRetry(ctx, c.http, *c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
+	resp, err := transport.DoWithRetry(ctx, c.http, c.retry, reqFn, func(_ int, resp *http.Response) (bool, error) {
 		if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
 			return false, nil
 		}
