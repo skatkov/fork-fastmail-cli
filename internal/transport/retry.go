@@ -70,6 +70,8 @@ func DoWithRetry(ctx context.Context, client *http.Client, cfg RetryConfig, reqF
 				return resp, nil
 			}
 			_ = resp.Body.Close()
+			resp.Body = nil // Prevent accidental access to closed body
+			// retryResp is used only for header access (e.g., Retry-After)
 			retryResp = resp
 			lastErr = &HTTPError{StatusCode: resp.StatusCode, Status: resp.Status}
 		}
