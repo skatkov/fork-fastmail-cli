@@ -1,7 +1,10 @@
 // Package errors provides contextual error handling with user-facing suggestions.
 package errors
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Common suggestion constants for user-facing error messages
 const (
@@ -69,30 +72,19 @@ func WithSuggestion(err error, suggestion string) error {
 
 // ContainsSuggestion checks if an error has a user-facing suggestion.
 // Returns false if the error is nil.
+// Uses errors.As to properly unwrap wrapped errors.
 func ContainsSuggestion(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Check direct ContextError
-	if ce, ok := err.(*ContextError); ok {
-		return ce.Suggestion != ""
-	}
-
-	return false
+	var ce *ContextError
+	return errors.As(err, &ce) && ce.Suggestion != ""
 }
 
 // GetSuggestion extracts the user-facing suggestion from an error.
 // Returns an empty string if the error is nil or has no suggestion.
+// Uses errors.As to properly unwrap wrapped errors.
 func GetSuggestion(err error) string {
-	if err == nil {
-		return ""
-	}
-
-	// Check direct ContextError
-	if ce, ok := err.(*ContextError); ok {
+	var ce *ContextError
+	if errors.As(err, &ce) {
 		return ce.Suggestion
 	}
-
 	return ""
 }

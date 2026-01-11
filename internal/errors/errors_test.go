@@ -2,6 +2,7 @@ package errors
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -171,5 +172,34 @@ func TestSuggestionConstants(t *testing.T) {
 		if c.value == "" {
 			t.Errorf("%s should not be empty", c.name)
 		}
+	}
+}
+
+func TestContextError_WrappedSuggestion(t *testing.T) {
+	// Create a ContextError with a suggestion
+	baseErr := errors.New("auth failed")
+	contextErr := WithSuggestion(baseErr, SuggestionReauth)
+
+	// Wrap it with fmt.Errorf (simulates how errors get wrapped in practice)
+	wrappedErr := fmt.Errorf("outer context: %w", contextErr)
+
+	// ContainsSuggestion should find the suggestion through the wrapper
+	if !ContainsSuggestion(wrappedErr) {
+		t.Error("ContainsSuggestion() should return true for wrapped ContextError with suggestion")
+	}
+
+	// GetSuggestion should extract the suggestion through the wrapper
+	got := GetSuggestion(wrappedErr)
+	if got != SuggestionReauth {
+		t.Errorf("GetSuggestion() = %q, want %q", got, SuggestionReauth)
+	}
+
+	// Double-wrapped should also work
+	doubleWrapped := fmt.Errorf("even more outer: %w", wrappedErr)
+	if !ContainsSuggestion(doubleWrapped) {
+		t.Error("ContainsSuggestion() should return true for double-wrapped ContextError")
+	}
+	if GetSuggestion(doubleWrapped) != SuggestionReauth {
+		t.Errorf("GetSuggestion() on double-wrapped = %q, want %q", GetSuggestion(doubleWrapped), SuggestionReauth)
 	}
 }
