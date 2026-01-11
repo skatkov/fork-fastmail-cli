@@ -5,7 +5,7 @@ package transport
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"strconv"
@@ -113,7 +113,7 @@ func RetryDelay(cfg RetryConfig, attempt int, resp *http.Response) time.Duration
 	// Add jitter (±20%) to prevent thundering herd.
 	jitterRange := int64(delay) / 5
 	if jitterRange > 0 {
-		jitter := time.Duration(rand.Int63n(jitterRange*2) - jitterRange)
+		jitter := time.Duration(rand.Int64N(jitterRange*2) - jitterRange)
 		delay += jitter
 	}
 
