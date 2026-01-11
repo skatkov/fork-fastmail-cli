@@ -1,3 +1,5 @@
+// Package transport provides shared HTTP client utilities for retry logic,
+// error handling, and common HTTP patterns used across JMAP, WebDAV, and CalDAV clients.
 package transport
 
 import (
