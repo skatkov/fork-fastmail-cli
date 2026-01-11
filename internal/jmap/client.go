@@ -322,9 +322,9 @@ func (c *Client) MakeRequest(ctx context.Context, req *Request) (*Response, erro
 	}
 
 	reqFn := func(ctx context.Context) (*http.Request, error) {
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, session.APIUrl, bytes.NewReader(body))
-		if err != nil {
-			return nil, fmt.Errorf("creating request: %w", err)
+		httpReq, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, session.APIUrl, bytes.NewReader(body))
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating request: %w", reqErr)
 		}
 		httpReq.Header.Set("Authorization", "Bearer "+c.token)
 		httpReq.Header.Set("Content-Type", "application/json")
@@ -407,9 +407,9 @@ func (c *Client) DownloadBlob(ctx context.Context, blobID string) (io.ReadCloser
 	downloadURL = strings.Replace(downloadURL, "{type}", "application/octet-stream", 1)
 
 	reqFn := func(ctx context.Context) (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("creating download request: %w", err)
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating download request: %w", reqErr)
 		}
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		return req, nil
@@ -475,9 +475,9 @@ func (c *Client) UploadBlob(ctx context.Context, reader io.Reader, contentType s
 	}
 
 	reqFn := func(ctx context.Context) (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(content))
-		if err != nil {
-			return nil, fmt.Errorf("creating upload request: %w", err)
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(content))
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating upload request: %w", reqErr)
 		}
 
 		req.Header.Set("Authorization", "Bearer "+c.token)
