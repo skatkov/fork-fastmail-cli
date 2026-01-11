@@ -5,7 +5,7 @@ Cloudflare Worker that receives tracking pixels and records email opens.
 ## Deploy
 
 ```bash
-cd internal/tracking/worker
+cd tools/email-tracking-worker
 
 # Install dependencies
 pnpm install
