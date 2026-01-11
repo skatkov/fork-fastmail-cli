@@ -2,7 +2,6 @@ package jmap
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -80,30 +79,11 @@ func (c *Client) GetAddressBooks(ctx context.Context) ([]AddressBook, error) {
 		return nil, err
 	}
 
-	if len(resp.MethodResponses) == 0 {
-		return nil, fmt.Errorf("empty response from server")
-	}
-
-	// Check for error response
-	methodName, ok := resp.MethodResponses[0][0].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid response format")
-	}
-	if methodName == "error" {
-		return nil, fmt.Errorf("API error: %v", resp.MethodResponses[0][1])
-	}
-
-	// Parse the result
-	resultJSON, err := json.Marshal(resp.MethodResponses[0][1])
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	var result struct {
+	result, err := decodeMethodResponse[struct {
 		List []AddressBook `json:"list"`
-	}
-	if err := json.Unmarshal(resultJSON, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}](resp, 0)
+	if err != nil {
+		return nil, err
 	}
 
 	return result.List, nil
@@ -155,29 +135,11 @@ func (c *Client) GetContacts(ctx context.Context, addressBookID string, limit in
 		return nil, err
 	}
 
-	if len(resp.MethodResponses) < 2 {
-		return nil, fmt.Errorf("incomplete response from server")
-	}
-
-	// Parse the ContactCard/get response
-	methodName, ok := resp.MethodResponses[1][0].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid response format")
-	}
-	if methodName == "error" {
-		return nil, fmt.Errorf("API error: %v", resp.MethodResponses[1][1])
-	}
-
-	resultJSON, err := json.Marshal(resp.MethodResponses[1][1])
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	var result struct {
+	result, err := decodeMethodResponse[struct {
 		List []Contact `json:"list"`
-	}
-	if err := json.Unmarshal(resultJSON, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}](resp, 1)
+	if err != nil {
+		return nil, err
 	}
 
 	return result.List, nil
@@ -210,29 +172,11 @@ func (c *Client) GetContactByID(ctx context.Context, id string) (*Contact, error
 		return nil, err
 	}
 
-	if len(resp.MethodResponses) == 0 {
-		return nil, fmt.Errorf("empty response from server")
-	}
-
-	// Check for error response
-	methodName, ok := resp.MethodResponses[0][0].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid response format")
-	}
-	if methodName == "error" {
-		return nil, fmt.Errorf("API error: %v", resp.MethodResponses[0][1])
-	}
-
-	resultJSON, err := json.Marshal(resp.MethodResponses[0][1])
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	var result struct {
+	result, err := decodeMethodResponse[struct {
 		List []Contact `json:"list"`
-	}
-	if err := json.Unmarshal(resultJSON, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}](resp, 0)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(result.List) == 0 {
@@ -271,29 +215,11 @@ func (c *Client) CreateContact(ctx context.Context, contact *Contact) (*Contact,
 		return nil, err
 	}
 
-	if len(resp.MethodResponses) == 0 {
-		return nil, fmt.Errorf("empty response from server")
-	}
-
-	// Check for error response
-	methodName, ok := resp.MethodResponses[0][0].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid response format")
-	}
-	if methodName == "error" {
-		return nil, fmt.Errorf("API error: %v", resp.MethodResponses[0][1])
-	}
-
-	resultJSON, err := json.Marshal(resp.MethodResponses[0][1])
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	var result struct {
+	result, err := decodeMethodResponse[struct {
 		Created map[string]Contact `json:"created"`
-	}
-	if err := json.Unmarshal(resultJSON, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}](resp, 0)
+	if err != nil {
+		return nil, err
 	}
 
 	created, ok := result.Created["new-contact"]
@@ -333,29 +259,11 @@ func (c *Client) UpdateContact(ctx context.Context, id string, updates map[strin
 		return nil, err
 	}
 
-	if len(resp.MethodResponses) == 0 {
-		return nil, fmt.Errorf("empty response from server")
-	}
-
-	// Check for error response
-	methodName, ok := resp.MethodResponses[0][0].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid response format")
-	}
-	if methodName == "error" {
-		return nil, fmt.Errorf("API error: %v", resp.MethodResponses[0][1])
-	}
-
-	resultJSON, err := json.Marshal(resp.MethodResponses[0][1])
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	var result struct {
+	result, err := decodeMethodResponse[struct {
 		Updated map[string]Contact `json:"updated"`
-	}
-	if err := json.Unmarshal(resultJSON, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}](resp, 0)
+	if err != nil {
+		return nil, err
 	}
 
 	updated, ok := result.Updated[id]
@@ -393,17 +301,8 @@ func (c *Client) DeleteContact(ctx context.Context, id string) error {
 		return err
 	}
 
-	if len(resp.MethodResponses) == 0 {
-		return fmt.Errorf("empty response from server")
-	}
-
-	// Check for error response
-	methodName, ok := resp.MethodResponses[0][0].(string)
-	if !ok {
-		return fmt.Errorf("invalid response format")
-	}
-	if methodName == "error" {
-		return fmt.Errorf("API error: %v", resp.MethodResponses[0][1])
+	if _, err := decodeMethodResponse[map[string]any](resp, 0); err != nil {
+		return err
 	}
 
 	return nil
@@ -451,29 +350,11 @@ func (c *Client) SearchContacts(ctx context.Context, query string, limit int) ([
 		return nil, err
 	}
 
-	if len(resp.MethodResponses) < 2 {
-		return nil, fmt.Errorf("incomplete response from server")
-	}
-
-	// Parse the ContactCard/get response
-	methodName, ok := resp.MethodResponses[1][0].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid response format")
-	}
-	if methodName == "error" {
-		return nil, fmt.Errorf("API error: %v", resp.MethodResponses[1][1])
-	}
-
-	resultJSON, err := json.Marshal(resp.MethodResponses[1][1])
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	var result struct {
+	result, err := decodeMethodResponse[struct {
 		List []Contact `json:"list"`
-	}
-	if err := json.Unmarshal(resultJSON, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}](resp, 1)
+	if err != nil {
+		return nil, err
 	}
 
 	return result.List, nil
