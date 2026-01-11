@@ -96,11 +96,10 @@ func TestIsRetriableError(t *testing.T) {
 
 func TestParseRetryAfter(t *testing.T) {
 	tests := []struct {
-		name      string
-		resp      *http.Response
-		wantDur   time.Duration
-		wantOK    bool
-		checkFunc func(t *testing.T, dur time.Duration) // for time-based checks
+		name    string
+		resp    *http.Response
+		wantDur time.Duration
+		wantOK  bool
 	}{
 		{
 			name:    "nil response",
@@ -156,9 +155,7 @@ func TestParseRetryAfter(t *testing.T) {
 			if gotOK != tt.wantOK {
 				t.Errorf("ParseRetryAfter() ok = %v, want %v", gotOK, tt.wantOK)
 			}
-			if tt.checkFunc != nil {
-				tt.checkFunc(t, gotDur)
-			} else if gotDur != tt.wantDur {
+			if gotDur != tt.wantDur {
 				t.Errorf("ParseRetryAfter() duration = %v, want %v", gotDur, tt.wantDur)
 			}
 		})
