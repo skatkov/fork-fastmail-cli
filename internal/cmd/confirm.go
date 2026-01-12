@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 func confirmPrompt(w io.Writer, prompt string, accepted ...string) (bool, error) {
@@ -14,6 +16,9 @@ func confirmPrompt(w io.Writer, prompt string, accepted ...string) (bool, error)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
 			return false, fmt.Errorf("failed to read confirmation: %w", err)
+		}
+		if !term.IsTerminal(int(os.Stdin.Fd())) {
+			return false, Suggest(fmt.Errorf("confirmation required in non-interactive mode"), "Re-run with --yes to skip confirmation")
 		}
 		return false, fmt.Errorf("cancelled")
 	}
