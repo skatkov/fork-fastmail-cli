@@ -27,10 +27,17 @@ func newEmailSendCmd(app *App) *cobra.Command {
 		Short: "Send an email",
 		Long: `Send an email with optional attachments.
 
+The --from flag accepts both identities and masked email addresses. When replying
+to emails received on a masked email, use --from with that masked email to maintain
+address privacy and keep the conversation consistent.
+
 Examples:
   fastmail email send --to user@example.com --subject "Hello" --body "Hi there"
   fastmail email send --to user@example.com --subject "Report" --body "See attached" --attach report.pdf
-  fastmail email send --to user@example.com --subject "Q4 Results" --attach /docs/q4.pdf:Q4-Report.pdf`,
+  fastmail email send --to user@example.com --subject "Q4 Results" --attach /docs/q4.pdf:Q4-Report.pdf
+
+  # Send from a masked email address
+  fastmail email send --from my.alias123@fastmail.com --to vendor@example.com --subject "Re: Order" --body "..."`,
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -220,7 +227,7 @@ Examples:
 	cmd.Flags().StringVar(&subject, "subject", "", "Email subject")
 	cmd.Flags().StringVar(&body, "body", "", "Email body (plain text)")
 	cmd.Flags().StringVar(&htmlBody, "html", "", "Email body (HTML)")
-	cmd.Flags().StringVar(&fromIdentity, "from", "", "Send from this identity email (see: fastmail email identities)")
+	cmd.Flags().StringVar(&fromIdentity, "from", "", "Send from this identity or masked email address")
 	cmd.Flags().BoolVar(&draft, "draft", false, "Save as draft instead of sending")
 	cmd.Flags().StringVar(&replyTo, "reply-to", "", "Email ID to reply to (threads the draft)")
 	cmd.Flags().StringSliceVar(&attachments, "attach", nil, "Attach files (path or path:name)")
