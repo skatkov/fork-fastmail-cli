@@ -385,7 +385,8 @@ func (c *Client) CreateReplyDraft(ctx context.Context, replyToID string, opts Se
 
 	// If no From specified, check if the original email was sent to a masked email
 	// and use that as the reply address to maintain identity consistency.
-	// Masked emails can be used for sending (using default identity for authorization).
+	// Masked emails can be used for sending; the client will create a temporary
+	// sending identity if needed.
 	if opts.From == "" {
 		maskedFrom := c.findMaskedEmailRecipient(ctx, original)
 		if maskedFrom != "" {
@@ -618,20 +619,24 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 	}
 
 	// Determine authorization identity and sending addresses
-	// - authIdentity: used for identityId (JMAP authorization)
+	// - authIdentityID: used for identityId (JMAP authorization)
+	// - authIdentityEmail: used for Sender header when it differs from From
 	// - sendFromEmail: used in email From header (what recipient sees, can be masked email)
 	// - envelopeFromEmail: used in SMTP envelope mailFrom (must be verified identity, or empty to omit envelope)
 	// - isMaskedEmail: true if sending from a masked email (requires special handling)
-	var authIdentity *Identity
+	var authIdentityID string
+	var authIdentityEmail string
 	var sendFromEmail string
 	var envelopeFromEmail string
 	var isMaskedEmail bool
+	var tempIdentityID string
 
 	if opts.From != "" {
 		// Check if From matches an identity
 		for i := range identities {
 			if strings.EqualFold(identities[i].Email, opts.From) {
-				authIdentity = &identities[i]
+				authIdentityID = identities[i].ID
+				authIdentityEmail = identities[i].Email
 				sendFromEmail = identities[i].Email
 				envelopeFromEmail = identities[i].Email
 				break
@@ -639,27 +644,26 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 		}
 
 		// If not an identity, check if it's a masked email
-		if authIdentity == nil {
+		if authIdentityID == "" {
 			maskedEmails, maskedErr := c.GetMaskedEmails(ctx)
 			if maskedErr == nil {
 				for _, me := range maskedEmails {
 					if strings.EqualFold(me.Email, opts.From) && (me.State == MaskedEmailEnabled || me.State == MaskedEmailPending) {
-						// Try to create or get an identity for this masked email
-						maskedIdentity, identityErr := c.getOrCreateMaskedEmailIdentity(ctx, me.Email)
-						if identityErr == nil && maskedIdentity != nil {
-							// Successfully got/created identity for masked email
-							authIdentity = maskedIdentity
-							sendFromEmail = me.Email
-							envelopeFromEmail = me.Email
-							isMaskedEmail = true
+						isMaskedEmail = true
+						sendFromEmail = me.Email
+						envelopeFromEmail = "" // Let Fastmail derive the envelope for masked emails.
+
+						// Create a temporary identity for this masked email when possible.
+						maskedID, identityErr := c.createIdentity(ctx, me.Email)
+						if identityErr == nil && maskedID != "" {
+							authIdentityID = maskedID
+							authIdentityEmail = me.Email
+							tempIdentityID = maskedID
 						} else {
 							// Fallback: Use default identity for authorization,
 							// and the masked email for From header.
-							// Don't provide explicit envelope - let Fastmail handle it.
-							authIdentity = defaultIdentity
-							sendFromEmail = me.Email
-							envelopeFromEmail = "" // Signal to omit envelope
-							isMaskedEmail = true
+							authIdentityID = defaultIdentity.ID
+							authIdentityEmail = defaultIdentity.Email
 						}
 						break
 					}
@@ -668,7 +672,7 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 		}
 
 		// If neither identity nor masked email, error
-		if authIdentity == nil {
+		if authIdentityID == "" {
 			availableIdentities := make([]string, len(identities))
 			for i, id := range identities {
 				availableIdentities[i] = id.Email
@@ -681,9 +685,16 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 		}
 	} else {
 		// No From specified, use default identity
-		authIdentity = defaultIdentity
+		authIdentityID = defaultIdentity.ID
+		authIdentityEmail = defaultIdentity.Email
 		sendFromEmail = defaultIdentity.Email
 		envelopeFromEmail = defaultIdentity.Email
+	}
+
+	if tempIdentityID != "" {
+		defer func() {
+			_ = c.deleteIdentity(ctx, tempIdentityID)
+		}()
 	}
 
 	// Get mailboxes
@@ -727,10 +738,9 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 		"subject":    opts.Subject,
 	}
 
-	// For masked emails, add Sender header with the identity email
-	// This tells mail servers who is actually transmitting the message
-	if isMaskedEmail {
-		emailObj["sender"] = []map[string]string{{"email": authIdentity.Email}}
+	// Add Sender header when authorization identity differs from From.
+	if authIdentityEmail != "" && !strings.EqualFold(authIdentityEmail, sendFromEmail) {
+		emailObj["sender"] = []map[string]string{{"email": authIdentityEmail}}
 	}
 
 	// Add recipients
@@ -785,7 +795,7 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 	// Build submission object
 	submissionObj := map[string]any{
 		"emailId":    "#draft",
-		"identityId": authIdentity.ID,
+		"identityId": authIdentityID,
 	}
 
 	// Only include explicit envelope for non-masked emails.
@@ -1383,25 +1393,11 @@ func (c *Client) GetEmailAttachments(ctx context.Context, id string) ([]Attachme
 	return result_attachments, nil
 }
 
-// getOrCreateMaskedEmailIdentity attempts to find or create an identity for a masked email.
-// This enables sending from masked email addresses.
-func (c *Client) getOrCreateMaskedEmailIdentity(ctx context.Context, email string) (*Identity, error) {
-	// First, check if an identity already exists for this email
-	identities, err := c.GetIdentities(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range identities {
-		if strings.EqualFold(identities[i].Email, email) {
-			return &identities[i], nil
-		}
-	}
-
-	// No identity exists, try to create one
+// createIdentity creates a sending identity for the given email.
+func (c *Client) createIdentity(ctx context.Context, email string) (string, error) {
 	session, err := c.GetSession(ctx)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	req := &Request{
@@ -1421,32 +1417,65 @@ func (c *Client) getOrCreateMaskedEmailIdentity(ctx context.Context, email strin
 
 	resp, err := c.MakeRequest(ctx, req)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	result, ok := resp.MethodResponses[0][1].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("unexpected response format")
+		return "", fmt.Errorf("unexpected response format")
 	}
 
 	// Check if creation failed
 	if notCreated, ok := result["notCreated"].(map[string]any); ok {
 		if errInfo, exists := notCreated["new"]; exists {
-			return nil, fmt.Errorf("failed to create identity: %v", errInfo)
+			return "", fmt.Errorf("failed to create identity: %v", errInfo)
 		}
 	}
 
-	// Extract created identity
+	// Extract created identity ID
 	if created, ok := result["created"].(map[string]any); ok {
 		if identity, ok := created["new"].(map[string]any); ok {
-			return &Identity{
-				ID:    getString(identity, "id"),
-				Email: email,
-			}, nil
+			return getString(identity, "id"), nil
 		}
 	}
 
-	return nil, fmt.Errorf("identity creation returned unexpected result")
+	return "", fmt.Errorf("identity creation returned unexpected result")
+}
+
+// deleteIdentity deletes a sending identity by ID.
+func (c *Client) deleteIdentity(ctx context.Context, id string) error {
+	session, err := c.GetSession(ctx)
+	if err != nil {
+		return err
+	}
+
+	req := &Request{
+		Using: []string{"urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"},
+		MethodCalls: []MethodCall{
+			{"Identity/set", map[string]any{
+				"accountId": session.AccountID,
+				"destroy":   []string{id},
+			}, "destroyIdentity"},
+		},
+	}
+
+	resp, err := c.MakeRequest(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	result, ok := resp.MethodResponses[0][1].(map[string]any)
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+
+	if notDestroyed, ok := result["notDestroyed"].(map[string]any); ok {
+		if errInfo, exists := notDestroyed[id]; exists {
+			return fmt.Errorf("failed to delete identity: %v", errInfo)
+		}
+	}
+
+	return nil
 }
 
 // GetIdentities retrieves sending identities for the account.
@@ -1893,6 +1922,46 @@ type ForwardEmailOpts struct {
 	To   []string // Required: recipient addresses
 	From string   // Optional: override sender (default: auto-detect masked email)
 	Body string   // Optional: message to prepend to forwarded content
+}
+
+// ForwardFromSource indicates how the From address was chosen for a forward.
+type ForwardFromSource string
+
+const (
+	ForwardFromExplicit ForwardFromSource = "explicit"
+	ForwardFromMasked   ForwardFromSource = "masked"
+	ForwardFromDefault  ForwardFromSource = "default"
+)
+
+// ResolveForwardFrom determines the From address used when forwarding.
+func (c *Client) ResolveForwardFrom(ctx context.Context, original *Email, opts ForwardEmailOpts) (string, ForwardFromSource, error) {
+	if opts.From != "" {
+		return opts.From, ForwardFromExplicit, nil
+	}
+
+	maskedFrom := c.findMaskedEmailRecipient(ctx, original)
+	if maskedFrom != "" {
+		return maskedFrom, ForwardFromMasked, nil
+	}
+
+	identities, err := c.GetIdentities(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if len(identities) == 0 {
+		return "", "", ErrNoIdentities
+	}
+
+	// Match SendEmail behavior: use primary (non-deletable) identity if available.
+	defaultIdentity := identities[0]
+	for _, id := range identities {
+		if !id.MayDelete {
+			defaultIdentity = id
+			break
+		}
+	}
+
+	return defaultIdentity.Email, ForwardFromDefault, nil
 }
 
 // ForwardEmail forwards an email to new recipients.

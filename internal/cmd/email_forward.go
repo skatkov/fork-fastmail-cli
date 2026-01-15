@@ -64,6 +64,11 @@ Examples:
 				Body: body,
 			}
 
+			resolvedFrom, fromSource, err := client.ResolveForwardFrom(cmd.Context(), original, opts)
+			if err != nil {
+				return cerrors.WithContext(err, "resolving forward from")
+			}
+
 			// Forward the email
 			submissionID, err := client.ForwardEmail(cmd.Context(), original, opts)
 			if err != nil {
@@ -75,6 +80,8 @@ Examples:
 				"status":          "sent",
 				"originalEmailId": emailID,
 				"forwardedTo":     to,
+				"from":            resolvedFrom,
+				"fromSource":      fromSource,
 			}
 
 			if app.IsJSON(cmd.Context()) {
@@ -82,6 +89,7 @@ Examples:
 			}
 
 			fmt.Printf("Email forwarded successfully (submission ID: %s)\n", submissionID)
+			fmt.Printf("  From: %s (%s)\n", resolvedFrom, fromSource)
 			fmt.Printf("  To: %s\n", strings.Join(to, ", "))
 			if len(original.Attachments) > 0 {
 				fmt.Printf("  Attachments: %d included\n", len(original.Attachments))
