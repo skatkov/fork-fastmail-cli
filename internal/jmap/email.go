@@ -1934,9 +1934,14 @@ type ForwardEmailOpts struct {
 type ForwardFromSource string
 
 const (
+	// ForwardFromExplicit indicates the user explicitly specified the From address via --from flag.
 	ForwardFromExplicit ForwardFromSource = "explicit"
-	ForwardFromMasked   ForwardFromSource = "masked"
-	ForwardFromDefault  ForwardFromSource = "default"
+	// ForwardFromMasked indicates the From address was automatically detected from a masked email
+	// found in the original email's recipients.
+	ForwardFromMasked ForwardFromSource = "masked"
+	// ForwardFromDefault indicates the default identity was used because no masked email was
+	// detected and no explicit --from flag was provided.
+	ForwardFromDefault ForwardFromSource = "default"
 )
 
 // ResolveForwardFrom determines the From address used when forwarding.
