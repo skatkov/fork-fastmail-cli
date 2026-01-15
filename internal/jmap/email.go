@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"time"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/logging"
 )
@@ -2021,6 +2022,15 @@ func (c *Client) ForwardEmail(ctx context.Context, original *Email, opts Forward
 
 // buildForwardBody creates the forward message body with headers.
 func buildForwardBody(original *Email, prependBody string) (textBody, htmlBody string) {
+	// Format the date in human-readable RFC1123Z format
+	receivedTime, err := time.Parse(time.RFC3339, original.ReceivedAt)
+	var dateStr string
+	if err == nil {
+		dateStr = receivedTime.Format(time.RFC1123Z) // "Mon, 02 Jan 2006 15:04:05 -0700"
+	} else {
+		dateStr = original.ReceivedAt // fallback to raw value
+	}
+
 	// Build forward header
 	forwardHeader := fmt.Sprintf(
 		"---------- Forwarded message ---------\n"+
@@ -2029,7 +2039,7 @@ func buildForwardBody(original *Email, prependBody string) (textBody, htmlBody s
 			"Subject: %s\n"+
 			"To: %s\n",
 		formatAddressList(original.From),
-		original.ReceivedAt,
+		dateStr,
 		original.Subject,
 		formatAddressList(original.To),
 	)

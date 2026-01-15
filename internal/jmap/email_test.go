@@ -1036,7 +1036,7 @@ func Test_buildForwardBody(t *testing.T) {
 			wantTextContains: []string{
 				"---------- Forwarded message ---------",
 				"From: Sender <sender@example.com>",
-				"Date: 2025-01-15T10:30:00Z",
+				"Date: Wed, 15 Jan 2025 10:30:00 +0000",
 				"Subject: Test Subject",
 				"To: Recipient <recipient@example.com>",
 				"Original message content",
@@ -1142,6 +1142,22 @@ func Test_buildForwardBody(t *testing.T) {
 			wantTextContains: []string{
 				"---------- Forwarded message ---------",
 				"From: sender@example.com",
+			},
+			wantHTMLEmpty: true,
+		},
+		{
+			name: "forward with invalid date format falls back to raw value",
+			original: &Email{
+				Subject:    "Invalid Date Test",
+				ReceivedAt: "not-a-valid-date",
+				From:       []EmailAddress{{Email: "sender@example.com"}},
+				To:         []EmailAddress{{Email: "recipient@example.com"}},
+				TextBody:   []BodyPart{{PartID: "text", Type: "text/plain"}},
+				BodyValues: map[string]BodyValue{"text": {Value: "Message content"}},
+			},
+			prependBody: "",
+			wantTextContains: []string{
+				"Date: not-a-valid-date",
 			},
 			wantHTMLEmpty: true,
 		},
