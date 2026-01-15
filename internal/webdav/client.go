@@ -161,9 +161,9 @@ func (c *Client) List(ctx context.Context, filePath string) ([]FileInfo, error) 
 </D:propfind>`
 
 	reqFn := func(ctx context.Context) (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, "PROPFIND", url, bytes.NewBufferString(propfindBody))
-		if err != nil {
-			return nil, fmt.Errorf("creating request: %w", err)
+		req, reqErr := http.NewRequestWithContext(ctx, "PROPFIND", url, bytes.NewBufferString(propfindBody))
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating request: %w", reqErr)
 		}
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		req.Header.Set("Content-Type", "application/xml")
@@ -302,9 +302,9 @@ func (c *Client) Download(ctx context.Context, remotePath, localPath string) err
 	url := c.baseURL + remotePath
 
 	reqFn := func(ctx context.Context) (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("creating request: %w", err)
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating request: %w", reqErr)
 		}
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		return req, nil
@@ -361,9 +361,9 @@ func (c *Client) Mkdir(ctx context.Context, dirPath string) error {
 	url := c.baseURL + dirPath
 
 	reqFn := func(ctx context.Context) (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, "MKCOL", url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("creating request: %w", err)
+		req, reqErr := http.NewRequestWithContext(ctx, "MKCOL", url, nil)
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating request: %w", reqErr)
 		}
 
 		req.Header.Set("Authorization", "Bearer "+c.token)
@@ -408,9 +408,9 @@ func (c *Client) Delete(ctx context.Context, filePath string) error {
 	url := c.baseURL + filePath
 
 	reqFn := func(ctx context.Context) (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("creating request: %w", err)
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating request: %w", reqErr)
 		}
 
 		req.Header.Set("Authorization", "Bearer "+c.token)
@@ -462,9 +462,9 @@ func (c *Client) Move(ctx context.Context, source, destination string) error {
 	destinationURL := c.baseURL + destination
 
 	reqFn := func(ctx context.Context) (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, "MOVE", sourceURL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("creating request: %w", err)
+		req, reqErr := http.NewRequestWithContext(ctx, "MOVE", sourceURL, nil)
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating request: %w", reqErr)
 		}
 
 		req.Header.Set("Authorization", "Bearer "+c.token)
