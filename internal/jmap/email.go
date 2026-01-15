@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/salmonumbrella/fastmail-cli/internal/logging"
 )
 
 // Mailbox represents a JMAP mailbox.
@@ -693,7 +695,9 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 
 	if tempIdentityID != "" {
 		defer func() {
-			_ = c.deleteIdentity(ctx, tempIdentityID)
+			if delErr := c.deleteIdentity(ctx, tempIdentityID); delErr != nil {
+				logging.FromContext(ctx).Debug("failed to delete temporary identity", "identityID", tempIdentityID, "error", delErr)
+			}
 		}()
 	}
 
