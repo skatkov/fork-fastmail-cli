@@ -1063,6 +1063,30 @@ func Test_buildForwardBody(t *testing.T) {
 			wantHTMLEmpty: true,
 		},
 		{
+			name: "forward with prepended body HTML escaping",
+			original: &Email{
+				Subject:    "Test Subject",
+				ReceivedAt: "2025-01-15T10:30:00Z",
+				From:       []EmailAddress{{Email: "sender@example.com"}},
+				To:         []EmailAddress{{Email: "recipient@example.com"}},
+				TextBody:   []BodyPart{{PartID: "text", Type: "text/plain"}},
+				HTMLBody:   []BodyPart{{PartID: "html", Type: "text/html"}},
+				BodyValues: map[string]BodyValue{
+					"text": {Value: "Original content"},
+					"html": {Value: "<p>Original HTML</p>"},
+				},
+			},
+			prependBody: "<script>alert('xss')</script>",
+			wantTextContains: []string{
+				"<script>alert('xss')</script>",
+				"---------- Forwarded message ---------",
+			},
+			wantHTMLContains: []string{
+				"&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;",
+				"<p>Original HTML</p>",
+			},
+		},
+		{
 			name: "forward with HTML original",
 			original: &Email{
 				Subject:    "HTML Email",

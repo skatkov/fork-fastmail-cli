@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/salmonumbrella/fastmail-cli/internal/logging"
@@ -2070,7 +2071,8 @@ func buildForwardBody(original *Email, prependBody string) (textBody, htmlBody s
 	if originalHTMLBody != "" {
 		htmlForwardHeader := strings.ReplaceAll(forwardHeader, "\n", "<br>\n")
 		if prependBody != "" {
-			htmlBody = "<p>" + strings.ReplaceAll(prependBody, "\n", "<br>") + "</p><br>\n" +
+			escapedBody := html.EscapeString(prependBody)
+			htmlBody = "<p>" + strings.ReplaceAll(escapedBody, "\n", "<br>") + "</p><br>\n" +
 				"<div style=\"border-left: 2px solid #ccc; padding-left: 10px; margin-left: 5px;\">\n" +
 				"<p style=\"color: #666;\">" + htmlForwardHeader + "</p>\n" +
 				originalHTMLBody + "\n</div>"
