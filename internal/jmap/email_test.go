@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -961,6 +962,189 @@ func TestParseSearchSnippets(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("parseSearchSnippets() mismatch\ngot:  %+v\nwant: %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_formatAddressList(t *testing.T) {
+	tests := []struct {
+		name     string
+		addrs    []EmailAddress
+		expected string
+	}{
+		{
+			name: "single address with name",
+			addrs: []EmailAddress{
+				{Name: "John Doe", Email: "john@example.com"},
+			},
+			expected: "John Doe <john@example.com>",
+		},
+		{
+			name: "single address without name",
+			addrs: []EmailAddress{
+				{Name: "", Email: "jane@example.com"},
+			},
+			expected: "jane@example.com",
+		},
+		{
+			name: "multiple addresses",
+			addrs: []EmailAddress{
+				{Name: "Alice Smith", Email: "alice@example.com"},
+				{Name: "", Email: "bob@example.com"},
+				{Name: "Charlie", Email: "charlie@example.com"},
+			},
+			expected: "Alice Smith <alice@example.com>, bob@example.com, Charlie <charlie@example.com>",
+		},
+		{
+			name:     "empty list",
+			addrs:    []EmailAddress{},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatAddressList(tt.addrs)
+			if got != tt.expected {
+				t.Errorf("formatAddressList() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func Test_buildForwardBody(t *testing.T) {
+	tests := []struct {
+		name             string
+		original         *Email
+		prependBody      string
+		wantTextContains []string
+		wantHTMLContains []string
+		wantHTMLEmpty    bool
+	}{
+		{
+			name: "basic forward without prepended body",
+			original: &Email{
+				Subject:    "Test Subject",
+				ReceivedAt: "2025-01-15T10:30:00Z",
+				From:       []EmailAddress{{Name: "Sender", Email: "sender@example.com"}},
+				To:         []EmailAddress{{Name: "Recipient", Email: "recipient@example.com"}},
+				TextBody:   []BodyPart{{PartID: "text", Type: "text/plain"}},
+				BodyValues: map[string]BodyValue{"text": {Value: "Original message content"}},
+			},
+			prependBody: "",
+			wantTextContains: []string{
+				"---------- Forwarded message ---------",
+				"From: Sender <sender@example.com>",
+				"Date: 2025-01-15T10:30:00Z",
+				"Subject: Test Subject",
+				"To: Recipient <recipient@example.com>",
+				"Original message content",
+			},
+			wantHTMLEmpty: true,
+		},
+		{
+			name: "forward with prepended body",
+			original: &Email{
+				Subject:    "Test Subject",
+				ReceivedAt: "2025-01-15T10:30:00Z",
+				From:       []EmailAddress{{Email: "sender@example.com"}},
+				To:         []EmailAddress{{Email: "recipient@example.com"}},
+				TextBody:   []BodyPart{{PartID: "text", Type: "text/plain"}},
+				BodyValues: map[string]BodyValue{"text": {Value: "Original content"}},
+			},
+			prependBody: "FYI - see below",
+			wantTextContains: []string{
+				"FYI - see below",
+				"---------- Forwarded message ---------",
+				"From: sender@example.com",
+				"Original content",
+			},
+			wantHTMLEmpty: true,
+		},
+		{
+			name: "forward with HTML original",
+			original: &Email{
+				Subject:    "HTML Email",
+				ReceivedAt: "2025-01-15T10:30:00Z",
+				From:       []EmailAddress{{Name: "Sender", Email: "sender@example.com"}},
+				To:         []EmailAddress{{Email: "recipient@example.com"}},
+				TextBody:   []BodyPart{{PartID: "text", Type: "text/plain"}},
+				HTMLBody:   []BodyPart{{PartID: "html", Type: "text/html"}},
+				BodyValues: map[string]BodyValue{
+					"text": {Value: "Plain text version"},
+					"html": {Value: "<p>HTML content here</p>"},
+				},
+			},
+			prependBody: "",
+			wantTextContains: []string{
+				"---------- Forwarded message ---------",
+				"Plain text version",
+			},
+			wantHTMLContains: []string{
+				"border-left: 2px solid #ccc",
+				"<p>HTML content here</p>",
+				"From: Sender <sender@example.com>",
+			},
+		},
+		{
+			name: "forward with CC recipients",
+			original: &Email{
+				Subject:    "CC Test",
+				ReceivedAt: "2025-01-15T10:30:00Z",
+				From:       []EmailAddress{{Email: "sender@example.com"}},
+				To:         []EmailAddress{{Email: "to@example.com"}},
+				CC:         []EmailAddress{{Name: "CC Person", Email: "cc@example.com"}, {Email: "cc2@example.com"}},
+				TextBody:   []BodyPart{{PartID: "text", Type: "text/plain"}},
+				BodyValues: map[string]BodyValue{"text": {Value: "Message"}},
+			},
+			prependBody: "",
+			wantTextContains: []string{
+				"Cc: CC Person <cc@example.com>, cc2@example.com",
+			},
+			wantHTMLEmpty: true,
+		},
+		{
+			name: "forward with empty body values",
+			original: &Email{
+				Subject:    "Empty Body",
+				ReceivedAt: "2025-01-15T10:30:00Z",
+				From:       []EmailAddress{{Email: "sender@example.com"}},
+				To:         []EmailAddress{{Email: "recipient@example.com"}},
+				TextBody:   []BodyPart{},
+				BodyValues: map[string]BodyValue{},
+			},
+			prependBody: "",
+			wantTextContains: []string{
+				"---------- Forwarded message ---------",
+				"From: sender@example.com",
+			},
+			wantHTMLEmpty: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotText, gotHTML := buildForwardBody(tt.original, tt.prependBody)
+
+			// Check text body contains expected strings
+			for _, want := range tt.wantTextContains {
+				if !strings.Contains(gotText, want) {
+					t.Errorf("buildForwardBody() textBody missing %q\ngot: %s", want, gotText)
+				}
+			}
+
+			// Check HTML body
+			if tt.wantHTMLEmpty {
+				if gotHTML != "" {
+					t.Errorf("buildForwardBody() expected empty htmlBody, got: %s", gotHTML)
+				}
+			} else {
+				for _, want := range tt.wantHTMLContains {
+					if !strings.Contains(gotHTML, want) {
+						t.Errorf("buildForwardBody() htmlBody missing %q\ngot: %s", want, gotHTML)
+					}
+				}
 			}
 		})
 	}
