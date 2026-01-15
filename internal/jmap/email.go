@@ -617,11 +617,15 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 		defaultIdentity = &identities[0]
 	}
 
-	// Determine authorization identity and sending address
+	// Determine authorization identity and sending addresses
 	// - authIdentity: used for identityId (JMAP authorization)
-	// - sendFromEmail: used in email From header and envelope mailFrom
+	// - sendFromEmail: used in email From header (what recipient sees, can be masked email)
+	// - envelopeFromEmail: used in SMTP envelope mailFrom (must be verified identity, or empty to omit envelope)
+	// - isMaskedEmail: true if sending from a masked email (requires special handling)
 	var authIdentity *Identity
 	var sendFromEmail string
+	var envelopeFromEmail string
+	var isMaskedEmail bool
 
 	if opts.From != "" {
 		// Check if From matches an identity
@@ -629,6 +633,7 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 			if strings.EqualFold(identities[i].Email, opts.From) {
 				authIdentity = &identities[i]
 				sendFromEmail = identities[i].Email
+				envelopeFromEmail = identities[i].Email
 				break
 			}
 		}
@@ -639,9 +644,23 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 			if maskedErr == nil {
 				for _, me := range maskedEmails {
 					if strings.EqualFold(me.Email, opts.From) && (me.State == MaskedEmailEnabled || me.State == MaskedEmailPending) {
-						// Use default identity for authorization, but send from masked email
-						authIdentity = defaultIdentity
-						sendFromEmail = me.Email
+						// Try to create or get an identity for this masked email
+						maskedIdentity, identityErr := c.getOrCreateMaskedEmailIdentity(ctx, me.Email)
+						if identityErr == nil && maskedIdentity != nil {
+							// Successfully got/created identity for masked email
+							authIdentity = maskedIdentity
+							sendFromEmail = me.Email
+							envelopeFromEmail = me.Email
+							isMaskedEmail = true
+						} else {
+							// Fallback: Use default identity for authorization,
+							// and the masked email for From header.
+							// Don't provide explicit envelope - let Fastmail handle it.
+							authIdentity = defaultIdentity
+							sendFromEmail = me.Email
+							envelopeFromEmail = "" // Signal to omit envelope
+							isMaskedEmail = true
+						}
 						break
 					}
 				}
@@ -664,6 +683,7 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 		// No From specified, use default identity
 		authIdentity = defaultIdentity
 		sendFromEmail = defaultIdentity.Email
+		envelopeFromEmail = defaultIdentity.Email
 	}
 
 	// Get mailboxes
@@ -705,6 +725,12 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 		"keywords":   map[string]bool{"$draft": true},
 		"from":       []map[string]string{{"email": sendFromEmail}},
 		"subject":    opts.Subject,
+	}
+
+	// For masked emails, add Sender header with the identity email
+	// This tells mail servers who is actually transmitting the message
+	if isMaskedEmail {
+		emailObj["sender"] = []map[string]string{{"email": authIdentity.Email}}
 	}
 
 	// Add recipients
@@ -756,14 +782,33 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 		emailObj["attachments"] = attachments
 	}
 
-	// Build envelope
-	rcptTo := make([]map[string]string, len(opts.To))
-	for i, addr := range opts.To {
-		rcptTo[i] = map[string]string{"email": addr}
+	// Build submission object
+	submissionObj := map[string]any{
+		"emailId":    "#draft",
+		"identityId": authIdentity.ID,
+	}
+
+	// Only include explicit envelope for non-masked emails.
+	// For masked emails, let Fastmail derive the envelope automatically.
+	if envelopeFromEmail != "" {
+		rcptTo := make([]map[string]string, len(opts.To))
+		for i, addr := range opts.To {
+			rcptTo[i] = map[string]string{"email": addr}
+		}
+		submissionObj["envelope"] = map[string]any{
+			"mailFrom": map[string]string{"email": envelopeFromEmail},
+			"rcptTo":   rcptTo,
+		}
+	}
+
+	// Include masked email capability if sending from a masked email
+	usingCaps := []string{"urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"}
+	if isMaskedEmail {
+		usingCaps = append(usingCaps, maskedEmailNamespace)
 	}
 
 	req := &Request{
-		Using: []string{"urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"},
+		Using: usingCaps,
 		MethodCalls: []MethodCall{
 			{"Email/set", map[string]any{
 				"accountId": session.AccountID,
@@ -772,14 +817,7 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 			{"EmailSubmission/set", map[string]any{
 				"accountId": session.AccountID,
 				"create": map[string]any{
-					"submission": map[string]any{
-						"emailId":    "#draft",
-						"identityId": authIdentity.ID,
-						"envelope": map[string]any{
-							"mailFrom": map[string]string{"email": sendFromEmail},
-							"rcptTo":   rcptTo,
-						},
-					},
+					"submission": submissionObj,
 				},
 				"onSuccessUpdateEmail": map[string]any{
 					"#submission": map[string]any{
@@ -803,8 +841,8 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 	}
 
 	if notCreated, notCreatedOK := emailResult["notCreated"].(map[string]any); notCreatedOK {
-		if _, exists := notCreated["draft"]; exists {
-			return "", fmt.Errorf("failed to create email")
+		if errInfo, exists := notCreated["draft"]; exists {
+			return "", fmt.Errorf("failed to create email: %v", errInfo)
 		}
 	}
 
@@ -815,8 +853,8 @@ func (c *Client) SendEmail(ctx context.Context, opts SendEmailOpts) (string, err
 	}
 
 	if notCreated, ok := submissionResult["notCreated"].(map[string]any); ok {
-		if _, exists := notCreated["submission"]; exists {
-			return "", fmt.Errorf("failed to submit email")
+		if errInfo, exists := notCreated["submission"]; exists {
+			return "", fmt.Errorf("failed to submit email: %v", errInfo)
 		}
 	}
 
@@ -1345,6 +1383,72 @@ func (c *Client) GetEmailAttachments(ctx context.Context, id string) ([]Attachme
 	return result_attachments, nil
 }
 
+// getOrCreateMaskedEmailIdentity attempts to find or create an identity for a masked email.
+// This enables sending from masked email addresses.
+func (c *Client) getOrCreateMaskedEmailIdentity(ctx context.Context, email string) (*Identity, error) {
+	// First, check if an identity already exists for this email
+	identities, err := c.GetIdentities(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range identities {
+		if strings.EqualFold(identities[i].Email, email) {
+			return &identities[i], nil
+		}
+	}
+
+	// No identity exists, try to create one
+	session, err := c.GetSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &Request{
+		Using: []string{"urn:ietf:params:jmap:core", "urn:ietf:params:jmap:submission"},
+		MethodCalls: []MethodCall{
+			{"Identity/set", map[string]any{
+				"accountId": session.AccountID,
+				"create": map[string]any{
+					"new": map[string]any{
+						"email": email,
+						"name":  "", // No display name needed
+					},
+				},
+			}, "createIdentity"},
+		},
+	}
+
+	resp, err := c.MakeRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	result, ok := resp.MethodResponses[0][1].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format")
+	}
+
+	// Check if creation failed
+	if notCreated, ok := result["notCreated"].(map[string]any); ok {
+		if errInfo, exists := notCreated["new"]; exists {
+			return nil, fmt.Errorf("failed to create identity: %v", errInfo)
+		}
+	}
+
+	// Extract created identity
+	if created, ok := result["created"].(map[string]any); ok {
+		if identity, ok := created["new"].(map[string]any); ok {
+			return &Identity{
+				ID:    getString(identity, "id"),
+				Email: email,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("identity creation returned unexpected result")
+}
+
 // GetIdentities retrieves sending identities for the account.
 func (c *Client) GetIdentities(ctx context.Context) ([]Identity, error) {
 	session, err := c.GetSession(ctx)
@@ -1782,6 +1886,145 @@ func (c *Client) RenameMailbox(ctx context.Context, id, newName string) error {
 	}
 
 	return nil
+}
+
+// ForwardEmailOpts contains options for forwarding an email.
+type ForwardEmailOpts struct {
+	To   []string // Required: recipient addresses
+	From string   // Optional: override sender (default: auto-detect masked email)
+	Body string   // Optional: message to prepend to forwarded content
+}
+
+// ForwardEmail forwards an email to new recipients.
+// Automatically uses the masked email address if the original was received on one.
+// Includes all original attachments.
+func (c *Client) ForwardEmail(ctx context.Context, original *Email, opts ForwardEmailOpts) (string, error) {
+	if len(opts.To) == 0 {
+		return "", fmt.Errorf("at least one recipient is required")
+	}
+
+	// Determine the From address
+	// If not specified, check if original was received on a masked email
+	fromAddress := opts.From
+	if fromAddress == "" {
+		maskedFrom := c.findMaskedEmailRecipient(ctx, original)
+		if maskedFrom != "" {
+			fromAddress = maskedFrom
+		}
+	}
+
+	// Build forward subject
+	subject := original.Subject
+	if !strings.HasPrefix(strings.ToLower(subject), "fwd:") {
+		subject = "Fwd: " + subject
+	}
+
+	// Build forward body with header
+	textBody, htmlBody := buildForwardBody(original, opts.Body)
+
+	// Prepare attachments (reuse existing blob IDs)
+	var attachments []AttachmentOpts
+	for _, att := range original.Attachments {
+		attachments = append(attachments, AttachmentOpts{
+			BlobID: att.BlobID,
+			Name:   att.Name,
+			Type:   att.Type,
+		})
+	}
+
+	// Send the forwarded email
+	sendOpts := SendEmailOpts{
+		To:          opts.To,
+		Subject:     subject,
+		TextBody:    textBody,
+		HTMLBody:    htmlBody,
+		From:        fromAddress,
+		Attachments: attachments,
+	}
+
+	return c.SendEmail(ctx, sendOpts)
+}
+
+// buildForwardBody creates the forward message body with headers.
+func buildForwardBody(original *Email, prependBody string) (textBody, htmlBody string) {
+	// Build forward header
+	forwardHeader := fmt.Sprintf(
+		"---------- Forwarded message ---------\n"+
+			"From: %s\n"+
+			"Date: %s\n"+
+			"Subject: %s\n"+
+			"To: %s\n",
+		formatAddressList(original.From),
+		original.ReceivedAt,
+		original.Subject,
+		formatAddressList(original.To),
+	)
+
+	if len(original.CC) > 0 {
+		forwardHeader += fmt.Sprintf("Cc: %s\n", formatAddressList(original.CC))
+	}
+	forwardHeader += "\n"
+
+	// Get original body content
+	var originalTextBody string
+	if len(original.TextBody) > 0 && len(original.BodyValues) > 0 {
+		for _, part := range original.TextBody {
+			if body, ok := original.BodyValues[part.PartID]; ok {
+				originalTextBody = body.Value
+				break
+			}
+		}
+	}
+
+	var originalHTMLBody string
+	if len(original.HTMLBody) > 0 && len(original.BodyValues) > 0 {
+		for _, part := range original.HTMLBody {
+			if body, ok := original.BodyValues[part.PartID]; ok {
+				originalHTMLBody = body.Value
+				break
+			}
+		}
+	}
+
+	// Build text body
+	if prependBody != "" {
+		textBody = prependBody + "\n\n" + forwardHeader + originalTextBody
+	} else {
+		textBody = forwardHeader + originalTextBody
+	}
+
+	// Build HTML body if original had HTML
+	if originalHTMLBody != "" {
+		htmlForwardHeader := strings.ReplaceAll(forwardHeader, "\n", "<br>\n")
+		if prependBody != "" {
+			htmlBody = "<p>" + strings.ReplaceAll(prependBody, "\n", "<br>") + "</p><br>\n" +
+				"<div style=\"border-left: 2px solid #ccc; padding-left: 10px; margin-left: 5px;\">\n" +
+				"<p style=\"color: #666;\">" + htmlForwardHeader + "</p>\n" +
+				originalHTMLBody + "\n</div>"
+		} else {
+			htmlBody = "<div style=\"border-left: 2px solid #ccc; padding-left: 10px; margin-left: 5px;\">\n" +
+				"<p style=\"color: #666;\">" + htmlForwardHeader + "</p>\n" +
+				originalHTMLBody + "\n</div>"
+		}
+	}
+
+	return textBody, htmlBody
+}
+
+// formatAddressList formats a list of email addresses for display.
+func formatAddressList(addrs []EmailAddress) string {
+	if len(addrs) == 0 {
+		return ""
+	}
+	parts := make([]string, len(addrs))
+	for i, addr := range addrs {
+		if addr.Name != "" {
+			parts[i] = fmt.Sprintf("%s <%s>", addr.Name, addr.Email)
+		} else {
+			parts[i] = addr.Email
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // ImportEmailOpts contains options for importing an email.

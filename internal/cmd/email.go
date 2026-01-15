@@ -12,6 +12,7 @@ func newEmailCmd(app *App) *cobra.Command {
 	cmd.AddCommand(newEmailSearchCmd(app))
 	cmd.AddCommand(newEmailGetCmd(app))
 	cmd.AddCommand(newEmailSendCmd(app))
+	cmd.AddCommand(newEmailForwardCmd(app))
 	cmd.AddCommand(newEmailDeleteCmd(app))
 	cmd.AddCommand(newEmailBulkDeleteCmd(app))
 	cmd.AddCommand(newEmailMoveCmd(app))
