@@ -69,6 +69,9 @@ Examples:
 				return cerrors.WithContext(err, "resolving forward from")
 			}
 
+			// Use resolved address to avoid duplicate resolution
+			opts.From = resolvedFrom
+
 			// Forward the email
 			submissionID, err := client.ForwardEmail(cmd.Context(), original, opts)
 			if err != nil {
