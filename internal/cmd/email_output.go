@@ -58,3 +58,15 @@ func emailsToOutput(emails []jmap.Email) []EmailOutput {
 	}
 	return out
 }
+
+// emailsToOutputWithCounts converts emails to output format with thread message counts.
+func emailsToOutputWithCounts(emails []jmap.Email, threadCounts map[string]int) []EmailOutput {
+	out := make([]EmailOutput, len(emails))
+	for i, email := range emails {
+		out[i] = emailToOutput(email)
+		if count, ok := threadCounts[email.ThreadID]; ok {
+			out[i].MessageCount = count
+		}
+	}
+	return out
+}

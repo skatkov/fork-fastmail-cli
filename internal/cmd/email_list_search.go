@@ -38,8 +38,19 @@ func newEmailListCmd(app *App) *cobra.Command {
 				return cerrors.WithContext(err, "listing emails")
 			}
 
+			// Fetch thread message counts
+			threadIDs := make([]string, 0, len(emails))
+			for _, email := range emails {
+				threadIDs = append(threadIDs, email.ThreadID)
+			}
+			threadCounts, err := client.GetThreadMessageCounts(cmd.Context(), threadIDs)
+			if err != nil {
+				// Non-fatal: continue without thread counts
+				threadCounts = map[string]int{}
+			}
+
 			if app.IsJSON(cmd.Context()) {
-				return app.PrintJSON(cmd, emailsToOutput(emails))
+				return app.PrintJSON(cmd, emailsToOutputWithCounts(emails, threadCounts))
 			}
 
 			if len(emails) == 0 {
@@ -48,7 +59,7 @@ func newEmailListCmd(app *App) *cobra.Command {
 			}
 
 			tw := outfmt.NewTabWriter()
-			fmt.Fprintln(tw, "ID\tSUBJECT\tFROM\tDATE\tUNREAD")
+			fmt.Fprintln(tw, "ID\tSUBJECT\tFROM\tDATE\tUNREAD\tTHREAD")
 			for _, email := range emails {
 				from := format.FormatEmailAddressList(email.From)
 				date := format.FormatEmailDate(email.ReceivedAt)
@@ -56,12 +67,14 @@ func newEmailListCmd(app *App) *cobra.Command {
 				if email.Keywords != nil && !email.Keywords["$seen"] {
 					unread = "*"
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				thread := formatThreadCount(threadCounts[email.ThreadID])
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
 					email.ID,
 					outfmt.SanitizeTab(format.Truncate(email.Subject, 50)),
 					outfmt.SanitizeTab(format.Truncate(from, 30)),
 					date,
 					unread,
+					thread,
 				)
 			}
 			tw.Flush()
@@ -170,4 +183,13 @@ Examples:
 	cmd.Flags().BoolVar(&snippets, "snippets", false, "Show highlighted search snippets")
 
 	return cmd
+}
+
+// formatThreadCount formats a thread message count for display.
+// Returns "-" for single-message threads, "[N msgs]" for multi-message threads.
+func formatThreadCount(count int) string {
+	if count <= 1 {
+		return "-"
+	}
+	return fmt.Sprintf("[%d msgs]", count)
 }
