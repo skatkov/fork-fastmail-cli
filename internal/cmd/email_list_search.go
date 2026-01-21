@@ -122,8 +122,19 @@ Examples:
 				return cerrors.WithContext(err, "searching emails")
 			}
 
+			// Fetch thread message counts
+			threadIDs := make([]string, 0, len(emails))
+			for _, email := range emails {
+				threadIDs = append(threadIDs, email.ThreadID)
+			}
+			threadCounts, err := client.GetThreadMessageCounts(cmd.Context(), threadIDs)
+			if err != nil {
+				// Non-fatal: continue without thread counts
+				threadCounts = map[string]int{}
+			}
+
 			if app.IsJSON(cmd.Context()) {
-				result := map[string]any{"emails": emailsToOutput(emails)}
+				result := map[string]any{"emails": emailsToOutputWithCounts(emails, threadCounts)}
 				if snippets && len(searchSnippets) > 0 {
 					result["snippets"] = searchSnippets
 				}
@@ -142,7 +153,7 @@ Examples:
 			}
 
 			tw := outfmt.NewTabWriter()
-			fmt.Fprintln(tw, "ID\tSUBJECT\tFROM\tDATE\tUNREAD")
+			fmt.Fprintln(tw, "ID\tSUBJECT\tFROM\tDATE\tUNREAD\tTHREAD")
 			for _, email := range emails {
 				from := format.FormatEmailAddressList(email.From)
 				date := format.FormatEmailDate(email.ReceivedAt)
@@ -150,6 +161,7 @@ Examples:
 				if email.Keywords != nil && !email.Keywords["$seen"] {
 					unread = "*"
 				}
+				thread := formatThreadCount(threadCounts[email.ThreadID])
 
 				subject := email.Subject
 				if snippets {
@@ -158,18 +170,19 @@ Examples:
 					}
 				}
 
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
 					email.ID,
 					outfmt.SanitizeTab(format.Truncate(subject, 50)),
 					outfmt.SanitizeTab(format.Truncate(from, 30)),
 					date,
 					unread,
+					thread,
 				)
 
 				// Show snippet preview if available
 				if snippets {
 					if s, ok := snippetMap[email.ID]; ok && s.Preview != "" {
-						fmt.Fprintf(tw, "\t%s\t\t\t\n", outfmt.SanitizeTab(format.Truncate(s.Preview, 80)))
+						fmt.Fprintf(tw, "\t%s\t\t\t\t\n", outfmt.SanitizeTab(format.Truncate(s.Preview, 80)))
 					}
 				}
 			}
