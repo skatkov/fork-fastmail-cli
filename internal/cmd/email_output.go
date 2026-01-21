@@ -19,6 +19,7 @@ type EmailOutput struct {
 	IsUnread      bool                `json:"isUnread"`
 	ThreadID      string              `json:"threadId,omitempty"`
 	Keywords      map[string]bool     `json:"keywords,omitempty"`
+	MessageCount  int                 `json:"messageCount,omitempty"` // Count of messages in thread
 }
 
 // emailToOutput converts an Email to a flattened EmailOutput for JSON serialization.
