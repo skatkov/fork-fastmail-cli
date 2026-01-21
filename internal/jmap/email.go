@@ -237,7 +237,7 @@ func (c *Client) GetEmails(ctx context.Context, mailboxID string, limit int) ([]
 			{"Email/get", map[string]any{
 				"accountId":  session.AccountID,
 				"#ids":       map[string]any{"resultOf": "query", "name": "Email/query", "path": "/ids"},
-				"properties": []string{"id", "subject", "from", "to", "receivedAt", "preview", "hasAttachment", "keywords"},
+				"properties": []string{"id", "subject", "from", "to", "receivedAt", "preview", "hasAttachment", "keywords", "threadId"},
 			}, "emails"},
 		},
 	}
@@ -2123,6 +2123,67 @@ type ImportEmailOpts struct {
 	MailboxIDs map[string]bool // Required: mailboxes to add email to
 	Keywords   map[string]bool // Optional: keywords like $seen, $flagged
 	ReceivedAt string          // Optional: override received date (RFC3339)
+}
+
+// GetThreadMessageCounts returns the message count for each thread ID.
+// This batches the request to avoid N+1 queries.
+func (c *Client) GetThreadMessageCounts(ctx context.Context, threadIDs []string) (map[string]int, error) {
+	if len(threadIDs) == 0 {
+		return map[string]int{}, nil
+	}
+
+	// Deduplicate thread IDs
+	seen := make(map[string]bool)
+	uniqueIDs := make([]string, 0, len(threadIDs))
+	for _, id := range threadIDs {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			uniqueIDs = append(uniqueIDs, id)
+		}
+	}
+
+	if len(uniqueIDs) == 0 {
+		return map[string]int{}, nil
+	}
+
+	session, err := c.GetSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &Request{
+		Using: []string{"urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"},
+		MethodCalls: []MethodCall{
+			{"Thread/get", map[string]any{
+				"accountId": session.AccountID,
+				"ids":       uniqueIDs,
+			}, "threads"},
+		},
+	}
+
+	resp, err := c.MakeRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	result, ok := resp.MethodResponses[0][1].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format")
+	}
+
+	counts := make(map[string]int)
+	if list, ok := result["list"].([]any); ok {
+		for _, item := range list {
+			if thread, ok := item.(map[string]any); ok {
+				threadID := getString(thread, "id")
+				if emailIDs, ok := thread["emailIds"].([]any); ok {
+					counts[threadID] = len(emailIDs)
+				}
+			}
+		}
+	}
+
+	return counts, nil
 }
 
 // ImportEmail imports a raw RFC 5322 email message into mailboxes.
