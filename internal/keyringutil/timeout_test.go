@@ -1,4 +1,4 @@
-package keyring
+package keyringutil
 
 import (
 	"errors"
