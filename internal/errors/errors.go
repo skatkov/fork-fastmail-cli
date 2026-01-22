@@ -12,7 +12,7 @@ const (
 	SuggestionCheckEmail    = "Verify your email address is correct"
 	SuggestionCheckNet      = "Check your network connection and try again"
 	SuggestionListIdentity  = "Run 'fastmail email identities' to see available sending addresses"
-	SuggestionUnlockKeyring = "Unlock your system keyring (for example GNOME Keyring or KWallet) and retry"
+	SuggestionUnlockKeyring = "Unlock your system keyring and retry"
 )
 
 // ContextError wraps an error with additional context and optional user-facing suggestion.
