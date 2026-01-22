@@ -7,7 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/99designs/keyring"
+	keyringlib "github.com/99designs/keyring"
+	"github.com/salmonumbrella/fastmail-cli/internal/keyring"
 )
 
 // Token represents a stored API token with metadata
@@ -24,20 +25,24 @@ type storedToken struct {
 	IsPrimary bool      `json:"is_primary,omitempty"`
 }
 
-var openKeyring = func() (keyring.Keyring, error) {
-	return keyring.Open(keyring.Config{
+var openKeyring = func() (keyringlib.Keyring, error) {
+	ring, err := keyringlib.Open(keyringlib.Config{
 		ServiceName: AppName,
 		// Try native keychain first, fall back to encrypted file if unavailable
 		// (e.g., when binary is cross-compiled without CGO)
-		AllowedBackends: []keyring.BackendType{
-			keyring.KeychainBackend,      // macOS (requires CGO)
-			keyring.WinCredBackend,       // Windows
-			keyring.SecretServiceBackend, // Linux (GNOME Keyring/KWallet)
-			keyring.FileBackend,          // Fallback: encrypted file
+		AllowedBackends: []keyringlib.BackendType{
+			keyringlib.KeychainBackend,      // macOS (requires CGO)
+			keyringlib.WinCredBackend,       // Windows
+			keyringlib.SecretServiceBackend, // Linux (GNOME Keyring/KWallet)
+			keyringlib.FileBackend,          // Fallback: encrypted file
 		},
 		FileDir:          configDir(),
-		FilePasswordFunc: keyring.TerminalPrompt,
+		FilePasswordFunc: keyringlib.TerminalPrompt,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return keyring.Wrap(ring, keyring.DefaultTimeout), nil
 }
 
 func configDir() string {
@@ -79,7 +84,7 @@ func SaveToken(email, token string) error {
 		return err
 	}
 
-	return ring.Set(keyring.Item{
+	return ring.Set(keyringlib.Item{
 		Key:  tokenKey(email),
 		Data: payload,
 	})
@@ -126,7 +131,7 @@ func SetPrimaryAccount(email string) error {
 			continue
 		}
 
-		_ = ring.Set(keyring.Item{ //nolint:errcheck // best-effort update
+		_ = ring.Set(keyringlib.Item{ //nolint:errcheck // best-effort update
 			Key:  k,
 			Data: payload,
 		})

@@ -8,10 +8,11 @@ import (
 
 // Common suggestion constants for user-facing error messages
 const (
-	SuggestionReauth       = "Run 'fastmail auth' to re-authenticate"
-	SuggestionCheckEmail   = "Verify your email address is correct"
-	SuggestionCheckNet     = "Check your network connection and try again"
-	SuggestionListIdentity = "Run 'fastmail email identities' to see available sending addresses"
+	SuggestionReauth        = "Run 'fastmail auth' to re-authenticate"
+	SuggestionCheckEmail    = "Verify your email address is correct"
+	SuggestionCheckNet      = "Check your network connection and try again"
+	SuggestionListIdentity  = "Run 'fastmail email identities' to see available sending addresses"
+	SuggestionUnlockKeyring = "Unlock your system keyring (for example GNOME Keyring or KWallet) and retry"
 )
 
 // ContextError wraps an error with additional context and optional user-facing suggestion.

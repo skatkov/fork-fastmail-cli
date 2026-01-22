@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/99designs/keyring"
+	keyringlib "github.com/99designs/keyring"
+	"github.com/salmonumbrella/fastmail-cli/internal/keyring"
 )
 
 const keyringService = "email-tracking"
@@ -20,23 +21,27 @@ const (
 	adminKeySecretKey    = "admin_key"
 )
 
-func openKeyring() (keyring.Keyring, error) {
+func openKeyring() (keyringlib.Keyring, error) {
 	configDir, err := ConfigDir()
 	if err != nil {
 		return nil, err
 	}
 
-	return keyring.Open(keyring.Config{
+	ring, err := keyringlib.Open(keyringlib.Config{
 		ServiceName: keyringService,
-		AllowedBackends: []keyring.BackendType{
-			keyring.KeychainBackend,
-			keyring.WinCredBackend,
-			keyring.SecretServiceBackend,
-			keyring.FileBackend,
+		AllowedBackends: []keyringlib.BackendType{
+			keyringlib.KeychainBackend,
+			keyringlib.WinCredBackend,
+			keyringlib.SecretServiceBackend,
+			keyringlib.FileBackend,
 		},
 		FileDir:          configDir,
-		FilePasswordFunc: keyring.TerminalPrompt,
+		FilePasswordFunc: keyringlib.TerminalPrompt,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return keyring.Wrap(ring, keyring.DefaultTimeout), nil
 }
 
 // SaveSecrets stores tracking keys in the keyring
@@ -54,14 +59,14 @@ func SaveSecrets(trackingKey, adminKey string) error {
 		return fmt.Errorf("open keyring: %w", err)
 	}
 
-	if err := ring.Set(keyring.Item{
+	if err := ring.Set(keyringlib.Item{
 		Key:  trackingKeySecretKey,
 		Data: []byte(trackingKey),
 	}); err != nil {
 		return fmt.Errorf("store tracking key: %w", err)
 	}
 
-	if err := ring.Set(keyring.Item{
+	if err := ring.Set(keyringlib.Item{
 		Key:  adminKeySecretKey,
 		Data: []byte(adminKey),
 	}); err != nil {
@@ -84,7 +89,7 @@ func LoadSecrets() (trackingKey, adminKey string, err error) {
 
 	tkItem, err := ring.Get(trackingKeySecretKey)
 	if err != nil {
-		if errors.Is(err, keyring.ErrKeyNotFound) {
+		if errors.Is(err, keyringlib.ErrKeyNotFound) {
 			return "", "", nil
 		}
 		return "", "", fmt.Errorf("read tracking key: %w", err)
@@ -92,7 +97,7 @@ func LoadSecrets() (trackingKey, adminKey string, err error) {
 
 	akItem, err := ring.Get(adminKeySecretKey)
 	if err != nil {
-		if errors.Is(err, keyring.ErrKeyNotFound) {
+		if errors.Is(err, keyringlib.ErrKeyNotFound) {
 			return string(tkItem.Data), "", nil
 		}
 		return "", "", fmt.Errorf("read admin key: %w", err)
