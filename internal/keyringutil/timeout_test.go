@@ -78,6 +78,9 @@ func TestTimeoutKeyring_KeysTimeout(t *testing.T) {
 	if !errors.As(err, &timeoutErr) {
 		t.Fatalf("expected TimeoutError, got %T", err)
 	}
+	if timeoutErr.Operation != "keys" {
+		t.Fatalf("expected operation 'keys', got %q", timeoutErr.Operation)
+	}
 	if !cerrors.ContainsSuggestion(err) {
 		t.Fatalf("expected suggestion on timeout error")
 	}
@@ -96,5 +99,17 @@ func TestTimeoutKeyring_KeysSuccess(t *testing.T) {
 	}
 	if len(keys) != 2 || keys[0] != "alpha" || keys[1] != "bravo" {
 		t.Fatalf("unexpected keys: %v", keys)
+	}
+}
+
+func TestNormalizeTimeout(t *testing.T) {
+	if normalizeTimeout(0) != DefaultTimeout {
+		t.Fatalf("expected default timeout for zero value")
+	}
+	if normalizeTimeout(-1) != DefaultTimeout {
+		t.Fatalf("expected default timeout for negative value")
+	}
+	if normalizeTimeout(2*time.Second) != 2*time.Second {
+		t.Fatalf("expected provided timeout to be preserved")
 	}
 }

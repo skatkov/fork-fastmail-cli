@@ -24,11 +24,11 @@ type timeoutKeyring struct {
 	timeout time.Duration
 }
 
-func Wrap(ring keyringlib.Keyring) keyringlib.Keyring {
+func Wrap(ring keyringlib.Keyring, timeout time.Duration) keyringlib.Keyring {
 	if ring == nil {
 		return nil
 	}
-	return &timeoutKeyring{ring: ring, timeout: DefaultTimeout}
+	return &timeoutKeyring{ring: ring, timeout: normalizeTimeout(timeout)}
 }
 
 func (k *timeoutKeyring) Get(key string) (keyringlib.Item, error) {
@@ -90,6 +90,13 @@ func callWithTimeoutErr(timeout time.Duration, operation string, fn func() error
 		return struct{}{}, fn()
 	})
 	return err
+}
+
+func normalizeTimeout(timeout time.Duration) time.Duration {
+	if timeout <= 0 {
+		return DefaultTimeout
+	}
+	return timeout
 }
 
 func timeoutError(operation string, timeout time.Duration) error {
