@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/salmonumbrella/fastmail-cli/internal/config"
 	cerrors "github.com/salmonumbrella/fastmail-cli/internal/errors"
 	"github.com/salmonumbrella/fastmail-cli/internal/format"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
@@ -109,6 +110,17 @@ Examples:
 				})
 			}
 
+			// Apply default identity if --from not specified
+			effectiveFrom := fromIdentity
+			if effectiveFrom == "" {
+				accountEmail, accountErr := app.RequireAccount()
+				if accountErr == nil {
+					if defaultIdentity, _ := config.GetDefaultIdentity(accountEmail); defaultIdentity != "" {
+						effectiveFrom = defaultIdentity
+					}
+				}
+			}
+
 			opts := jmap.SendEmailOpts{
 				To:          to,
 				CC:          cc,
@@ -116,7 +128,7 @@ Examples:
 				Subject:     subject,
 				TextBody:    body,
 				HTMLBody:    htmlBody,
-				From:        fromIdentity,
+				From:        effectiveFrom,
 				Attachments: attachmentOpts,
 			}
 

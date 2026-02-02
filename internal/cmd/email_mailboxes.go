@@ -206,7 +206,10 @@ func newEmailIdentitiesCmd(app *App) *cobra.Command {
 			}
 
 			// Get the user-configured default identity
-			accountEmail, _ := app.RequireAccount()
+			accountEmail, accountErr := app.RequireAccount()
+			if accountErr != nil {
+				return accountErr
+			}
 			defaultIdentity, _ := config.GetDefaultIdentity(accountEmail)
 
 			// Mark identities as default
