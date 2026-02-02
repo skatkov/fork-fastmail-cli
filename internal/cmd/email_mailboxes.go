@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/salmonumbrella/fastmail-cli/internal/config"
 	cerrors "github.com/salmonumbrella/fastmail-cli/internal/errors"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
 	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
@@ -203,6 +205,21 @@ func newEmailIdentitiesCmd(app *App) *cobra.Command {
 				return cerrors.WithContext(err, "fetching identities")
 			}
 
+			// Get the user-configured default identity
+			accountEmail, _ := app.RequireAccount()
+			defaultIdentity, _ := config.GetDefaultIdentity(accountEmail)
+
+			// Mark identities as default
+			for i := range identities {
+				if defaultIdentity != "" {
+					// User has explicitly set a default
+					identities[i].IsDefault = strings.EqualFold(identities[i].Email, defaultIdentity)
+				} else {
+					// Fall back to primary account identity (MayDelete=false)
+					identities[i].IsDefault = !identities[i].MayDelete
+				}
+			}
+
 			if app.IsJSON(cmd.Context()) {
 				return app.PrintJSON(cmd, identities)
 			}
@@ -215,20 +232,84 @@ func newEmailIdentitiesCmd(app *App) *cobra.Command {
 			tw := outfmt.NewTabWriter()
 			fmt.Fprintln(tw, "ID\tEMAIL\tNAME\tDEFAULT")
 			for _, id := range identities {
-				// MayDelete=false indicates the primary account identity
-				isDefault := ""
-				if !id.MayDelete {
-					isDefault = "*"
+				isDefaultStr := ""
+				if id.IsDefault {
+					isDefaultStr = "*"
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
 					id.ID,
 					id.Email,
 					outfmt.SanitizeTab(id.Name),
-					isDefault,
+					isDefaultStr,
 				)
 			}
 			tw.Flush()
 
+			return nil
+		}),
+	}
+
+	return cmd
+}
+
+func newIdentitySetDefaultCmd(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "identity-set-default <email>",
+		Short: "Set the default sending identity",
+		Long:  "Set which email identity to use by default when sending emails.",
+		Args:  cobra.ExactArgs(1),
+		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
+			targetEmail := strings.ToLower(strings.TrimSpace(args[0]))
+
+			client, err := app.JMAPClient()
+			if err != nil {
+				return err
+			}
+
+			// Get all identities to validate the email exists
+			identities, err := client.GetIdentities(cmd.Context())
+			if err != nil {
+				return cerrors.WithContext(err, "fetching identities")
+			}
+
+			// Validate the email is a valid identity
+			var found bool
+			var matchedIdentity jmap.Identity
+			for _, id := range identities {
+				if strings.EqualFold(id.Email, targetEmail) {
+					found = true
+					matchedIdentity = id
+					break
+				}
+			}
+
+			if !found {
+				available := make([]string, len(identities))
+				for i, id := range identities {
+					available[i] = id.Email
+				}
+				return fmt.Errorf("identity %q not found; available identities: %s", targetEmail, strings.Join(available, ", "))
+			}
+
+			// Get the current account email
+			accountEmail, err := app.RequireAccount()
+			if err != nil {
+				return err
+			}
+
+			// Save the default identity preference
+			if err := config.SetDefaultIdentity(accountEmail, matchedIdentity.Email); err != nil {
+				return fmt.Errorf("failed to save default identity: %w", err)
+			}
+
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
+					"defaultIdentity": matchedIdentity.Email,
+					"identityId":      matchedIdentity.ID,
+				})
+			}
+
+			fmt.Printf("Default sending identity set to: %s\n", matchedIdentity.Email)
 			return nil
 		}),
 	}

@@ -13,16 +13,18 @@ import (
 
 // Token represents a stored API token with metadata
 type Token struct {
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	IsPrimary bool      `json:"is_primary,omitempty"`
-	APIToken  string    `json:"-"` // Never serialize the token
+	Email           string    `json:"email"`
+	CreatedAt       time.Time `json:"created_at,omitempty"`
+	IsPrimary       bool      `json:"is_primary,omitempty"`
+	DefaultIdentity string    `json:"default_identity,omitempty"` // Preferred sending identity for this account
+	APIToken        string    `json:"-"`                          // Never serialize the token
 }
 
 type storedToken struct {
-	APIToken  string    `json:"api_token"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	IsPrimary bool      `json:"is_primary,omitempty"`
+	APIToken        string    `json:"api_token"`
+	CreatedAt       time.Time `json:"created_at,omitempty"`
+	IsPrimary       bool      `json:"is_primary,omitempty"`
+	DefaultIdentity string    `json:"default_identity,omitempty"`
 }
 
 var openKeyring = func() (keyring.Keyring, error) {
@@ -138,6 +140,71 @@ func SetPrimaryAccount(email string) error {
 	}
 
 	return nil
+}
+
+// SetDefaultIdentity sets the default sending identity for an account
+func SetDefaultIdentity(accountEmail, identityEmail string) error {
+	accountEmail = normalize(accountEmail)
+	identityEmail = normalize(identityEmail)
+	if accountEmail == "" {
+		return fmt.Errorf("missing account email")
+	}
+	if identityEmail == "" {
+		return fmt.Errorf("missing identity email")
+	}
+
+	ring, err := openKeyring()
+	if err != nil {
+		return err
+	}
+
+	key := tokenKey(accountEmail)
+	item, err := ring.Get(key)
+	if err != nil {
+		return fmt.Errorf("account not found: %s", accountEmail)
+	}
+
+	var st storedToken
+	if unmarshalErr := json.Unmarshal(item.Data, &st); unmarshalErr != nil {
+		return unmarshalErr
+	}
+
+	st.DefaultIdentity = identityEmail
+
+	payload, marshalErr := json.Marshal(st)
+	if marshalErr != nil {
+		return marshalErr
+	}
+
+	return ring.Set(keyring.Item{
+		Key:  key,
+		Data: payload,
+	})
+}
+
+// GetDefaultIdentity returns the default sending identity for an account
+func GetDefaultIdentity(accountEmail string) (string, error) {
+	accountEmail = normalize(accountEmail)
+	if accountEmail == "" {
+		return "", fmt.Errorf("missing account email")
+	}
+
+	ring, err := openKeyring()
+	if err != nil {
+		return "", err
+	}
+
+	item, err := ring.Get(tokenKey(accountEmail))
+	if err != nil {
+		return "", nil // No default set, return empty
+	}
+
+	var st storedToken
+	if err := json.Unmarshal(item.Data, &st); err != nil {
+		return "", err
+	}
+
+	return st.DefaultIdentity, nil
 }
 
 // GetPrimaryAccount returns the primary account email, or empty string if none
@@ -259,9 +326,10 @@ func ListTokens() ([]Token, error) {
 		// SECURITY: Do NOT include APIToken in returned data.
 		// Tokens should only be retrieved when actually needed via GetToken().
 		tokens = append(tokens, Token{
-			Email:     email,
-			CreatedAt: st.CreatedAt,
-			IsPrimary: st.IsPrimary,
+			Email:           email,
+			CreatedAt:       st.CreatedAt,
+			IsPrimary:       st.IsPrimary,
+			DefaultIdentity: st.DefaultIdentity,
 			// APIToken intentionally omitted - use GetToken() when needed
 		})
 	}

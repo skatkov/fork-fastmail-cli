@@ -79,6 +79,7 @@ type Identity struct {
 	Name      string `json:"name,omitempty"`
 	Email     string `json:"email"`
 	MayDelete bool   `json:"mayDelete"`
+	IsDefault bool   `json:"isDefault,omitempty"` // CLI preference, not JMAP property
 }
 
 // AttachmentOpts represents an attachment to include when sending an email.
