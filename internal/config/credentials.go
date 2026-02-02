@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/99designs/keyring"
+	"github.com/salmonumbrella/fastmail-cli/internal/keyringutil"
 )
 
 // Token represents a stored API token with metadata
@@ -25,7 +26,7 @@ type storedToken struct {
 }
 
 var openKeyring = func() (keyring.Keyring, error) {
-	return keyring.Open(keyring.Config{
+	ring, err := keyring.Open(keyring.Config{
 		ServiceName: AppName,
 		// Try native keychain first, fall back to encrypted file if unavailable
 		// (e.g., when binary is cross-compiled without CGO)
@@ -38,6 +39,10 @@ var openKeyring = func() (keyring.Keyring, error) {
 		FileDir:          configDir(),
 		FilePasswordFunc: keyring.TerminalPrompt,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return keyringutil.Wrap(ring), nil
 }
 
 func configDir() string {

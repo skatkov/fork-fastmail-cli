@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/99designs/keyring"
+	"github.com/salmonumbrella/fastmail-cli/internal/keyringutil"
 )
 
 const keyringService = "email-tracking"
@@ -26,7 +27,7 @@ func openKeyring() (keyring.Keyring, error) {
 		return nil, err
 	}
 
-	return keyring.Open(keyring.Config{
+	ring, err := keyring.Open(keyring.Config{
 		ServiceName: keyringService,
 		AllowedBackends: []keyring.BackendType{
 			keyring.KeychainBackend,
@@ -37,6 +38,10 @@ func openKeyring() (keyring.Keyring, error) {
 		FileDir:          configDir,
 		FilePasswordFunc: keyring.TerminalPrompt,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return keyringutil.Wrap(ring), nil
 }
 
 // SaveSecrets stores tracking keys in the keyring

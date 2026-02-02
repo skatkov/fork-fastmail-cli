@@ -50,7 +50,7 @@ For the latest on API availability, see [Fastmail's developer documentation](htt
 ### Homebrew
 
 ```bash
-brew install salmonumbrella/tap/fastmail
+brew install salmonumbrella/tap/fastmail-cli
 ```
 
 ## Quick Start
