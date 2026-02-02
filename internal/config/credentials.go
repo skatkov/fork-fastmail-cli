@@ -44,7 +44,7 @@ var openKeyring = func() (keyring.Keyring, error) {
 	if err != nil {
 		return nil, err
 	}
-	return keyringutil.Wrap(ring), nil
+	return keyringutil.Wrap(ring, keyringutil.DefaultTimeout), nil
 }
 
 func configDir() string {

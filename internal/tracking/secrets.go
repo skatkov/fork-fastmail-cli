@@ -41,7 +41,7 @@ func openKeyring() (keyring.Keyring, error) {
 	if err != nil {
 		return nil, err
 	}
-	return keyringutil.Wrap(ring), nil
+	return keyringutil.Wrap(ring, keyringutil.DefaultTimeout), nil
 }
 
 // SaveSecrets stores tracking keys in the keyring
