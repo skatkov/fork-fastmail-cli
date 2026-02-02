@@ -116,22 +116,15 @@ Examples:
 			var searchSnippets []jmap.SearchSnippet
 
 			// Parse the query into JMAP filter components
-			parsedFilter, err := parseEmailSearchFilter(args[0], time.Now())
+			filter, err := parseEmailSearchFilter(args[0], time.Now())
 			if err != nil {
 				return err
 			}
 
-			// Convert to JMAP filter type
-			jmapFilter := &jmap.EmailSearchFilter{
-				Text:   parsedFilter.Text,
-				After:  parsedFilter.After,
-				Before: parsedFilter.Before,
-			}
-
 			if snippets {
-				emails, searchSnippets, err = client.SearchEmailsWithSnippets(cmd.Context(), jmapFilter, limit)
+				emails, searchSnippets, err = client.SearchEmailsWithSnippets(cmd.Context(), filter, limit)
 			} else {
-				emails, err = client.SearchEmails(cmd.Context(), jmapFilter, limit)
+				emails, err = client.SearchEmails(cmd.Context(), filter, limit)
 			}
 
 			if err != nil {
