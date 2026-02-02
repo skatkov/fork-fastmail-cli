@@ -303,16 +303,38 @@ func (c *Client) GetEmailByID(ctx context.Context, id string) (*Email, error) {
 	return parseEmail(emailData), nil
 }
 
-// SearchEmails searches for emails matching a query.
-func (c *Client) SearchEmails(ctx context.Context, query string, limit int) ([]Email, error) {
+// EmailSearchFilter contains JMAP filter options for email search.
+type EmailSearchFilter struct {
+	Text   string // Full-text search query
+	After  string // RFC3339 timestamp - emails received after this time
+	Before string // RFC3339 timestamp - emails received before this time
+}
+
+// ToJMAPFilter converts the EmailSearchFilter to a JMAP filter map.
+func (f *EmailSearchFilter) ToJMAPFilter() map[string]any {
+	filter := map[string]any{}
+	if f.Text != "" {
+		filter["text"] = f.Text
+	}
+	if f.After != "" {
+		filter["after"] = f.After
+	}
+	if f.Before != "" {
+		filter["before"] = f.Before
+	}
+	return filter
+}
+
+// SearchEmails searches for emails matching a filter.
+func (c *Client) SearchEmails(ctx context.Context, searchFilter *EmailSearchFilter, limit int) ([]Email, error) {
 	session, err := c.GetSession(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	filter := map[string]any{}
-	if query != "" {
-		filter["text"] = query
+	if searchFilter != nil {
+		filter = searchFilter.ToJMAPFilter()
 	}
 
 	req := &Request{
@@ -1700,15 +1722,15 @@ type SearchSnippet struct {
 }
 
 // SearchEmailsWithSnippets searches for emails and returns highlighted snippets.
-func (c *Client) SearchEmailsWithSnippets(ctx context.Context, query string, limit int) ([]Email, []SearchSnippet, error) {
+func (c *Client) SearchEmailsWithSnippets(ctx context.Context, searchFilter *EmailSearchFilter, limit int) ([]Email, []SearchSnippet, error) {
 	session, err := c.GetSession(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	filter := map[string]any{}
-	if query != "" {
-		filter["text"] = query
+	if searchFilter != nil {
+		filter = searchFilter.ToJMAPFilter()
 	}
 
 	req := &Request{

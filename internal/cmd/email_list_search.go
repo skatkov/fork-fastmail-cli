@@ -115,15 +115,23 @@ Examples:
 			var emails []jmap.Email
 			var searchSnippets []jmap.SearchSnippet
 
-			query, err := normalizeEmailSearchQuery(args[0], time.Now())
+			// Parse the query into JMAP filter components
+			parsedFilter, err := parseEmailSearchFilter(args[0], time.Now())
 			if err != nil {
 				return err
 			}
 
+			// Convert to JMAP filter type
+			jmapFilter := &jmap.EmailSearchFilter{
+				Text:   parsedFilter.Text,
+				After:  parsedFilter.After,
+				Before: parsedFilter.Before,
+			}
+
 			if snippets {
-				emails, searchSnippets, err = client.SearchEmailsWithSnippets(cmd.Context(), query, limit)
+				emails, searchSnippets, err = client.SearchEmailsWithSnippets(cmd.Context(), jmapFilter, limit)
 			} else {
-				emails, err = client.SearchEmails(cmd.Context(), query, limit)
+				emails, err = client.SearchEmails(cmd.Context(), jmapFilter, limit)
 			}
 
 			if err != nil {
@@ -150,7 +158,7 @@ Examples:
 			}
 
 			if len(emails) == 0 {
-				printNoResults("No emails found matching '%s'", query)
+				printNoResults("No emails found matching '%s'", args[0])
 				return nil
 			}
 

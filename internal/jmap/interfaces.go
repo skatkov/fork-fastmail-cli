@@ -12,8 +12,8 @@ type EmailService interface {
 	// GetEmails retrieves emails from a mailbox with optional filtering and limit
 	GetEmails(ctx context.Context, mailboxID string, limit int) ([]Email, error)
 
-	// SearchEmails searches for emails matching a query string
-	SearchEmails(ctx context.Context, query string, limit int) ([]Email, error)
+	// SearchEmails searches for emails matching a filter
+	SearchEmails(ctx context.Context, filter *EmailSearchFilter, limit int) ([]Email, error)
 
 	// GetEmailByID retrieves a specific email by ID with full details
 	GetEmailByID(ctx context.Context, id string) (*Email, error)
@@ -64,7 +64,7 @@ type EmailService interface {
 	RenameMailbox(ctx context.Context, id, newName string) error
 
 	// SearchEmailsWithSnippets searches with highlighted context
-	SearchEmailsWithSnippets(ctx context.Context, query string, limit int) ([]Email, []SearchSnippet, error)
+	SearchEmailsWithSnippets(ctx context.Context, filter *EmailSearchFilter, limit int) ([]Email, []SearchSnippet, error)
 
 	// ImportEmail imports a raw RFC 5322 message
 	ImportEmail(ctx context.Context, opts ImportEmailOpts) (string, error)

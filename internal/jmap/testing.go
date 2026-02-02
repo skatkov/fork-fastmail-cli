@@ -11,7 +11,7 @@ import (
 // If a Func is not set, the method returns nil/empty values.
 type MockEmailService struct {
 	GetEmailsFunc                func(ctx context.Context, mailboxID string, limit int) ([]Email, error)
-	SearchEmailsFunc             func(ctx context.Context, query string, limit int) ([]Email, error)
+	SearchEmailsFunc             func(ctx context.Context, filter *EmailSearchFilter, limit int) ([]Email, error)
 	GetEmailByIDFunc             func(ctx context.Context, id string) (*Email, error)
 	SendEmailFunc                func(ctx context.Context, opts SendEmailOpts) (string, error)
 	DeleteEmailFunc              func(ctx context.Context, id string) error
@@ -28,7 +28,7 @@ type MockEmailService struct {
 	CreateMailboxFunc            func(ctx context.Context, opts CreateMailboxOpts) (*Mailbox, error)
 	DeleteMailboxFunc            func(ctx context.Context, id string) error
 	RenameMailboxFunc            func(ctx context.Context, id, newName string) error
-	SearchEmailsWithSnippetsFunc func(ctx context.Context, query string, limit int) ([]Email, []SearchSnippet, error)
+	SearchEmailsWithSnippetsFunc func(ctx context.Context, filter *EmailSearchFilter, limit int) ([]Email, []SearchSnippet, error)
 	ImportEmailFunc              func(ctx context.Context, opts ImportEmailOpts) (string, error)
 }
 
@@ -39,9 +39,9 @@ func (m *MockEmailService) GetEmails(ctx context.Context, mailboxID string, limi
 	return nil, nil
 }
 
-func (m *MockEmailService) SearchEmails(ctx context.Context, query string, limit int) ([]Email, error) {
+func (m *MockEmailService) SearchEmails(ctx context.Context, filter *EmailSearchFilter, limit int) ([]Email, error) {
 	if m.SearchEmailsFunc != nil {
-		return m.SearchEmailsFunc(ctx, query, limit)
+		return m.SearchEmailsFunc(ctx, filter, limit)
 	}
 	return nil, nil
 }
@@ -158,9 +158,9 @@ func (m *MockEmailService) RenameMailbox(ctx context.Context, id, newName string
 	return nil
 }
 
-func (m *MockEmailService) SearchEmailsWithSnippets(ctx context.Context, query string, limit int) ([]Email, []SearchSnippet, error) {
+func (m *MockEmailService) SearchEmailsWithSnippets(ctx context.Context, filter *EmailSearchFilter, limit int) ([]Email, []SearchSnippet, error) {
 	if m.SearchEmailsWithSnippetsFunc != nil {
-		return m.SearchEmailsWithSnippetsFunc(ctx, query, limit)
+		return m.SearchEmailsWithSnippetsFunc(ctx, filter, limit)
 	}
 	return nil, nil, nil
 }

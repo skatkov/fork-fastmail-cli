@@ -1484,3 +1484,65 @@ func TestImportEmail(t *testing.T) {
 		})
 	}
 }
+
+func TestEmailSearchFilter_ToJMAPFilter(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter *EmailSearchFilter
+		want   map[string]any
+	}{
+		{
+			name:   "empty filter",
+			filter: &EmailSearchFilter{},
+			want:   map[string]any{},
+		},
+		{
+			name:   "text only",
+			filter: &EmailSearchFilter{Text: "hello world"},
+			want:   map[string]any{"text": "hello world"},
+		},
+		{
+			name:   "after only",
+			filter: &EmailSearchFilter{After: "2026-01-15T00:00:00Z"},
+			want:   map[string]any{"after": "2026-01-15T00:00:00Z"},
+		},
+		{
+			name:   "before only",
+			filter: &EmailSearchFilter{Before: "2026-01-31T00:00:00Z"},
+			want:   map[string]any{"before": "2026-01-31T00:00:00Z"},
+		},
+		{
+			name: "all fields",
+			filter: &EmailSearchFilter{
+				Text:   "subject:meeting",
+				After:  "2026-01-15T00:00:00Z",
+				Before: "2026-01-31T00:00:00Z",
+			},
+			want: map[string]any{
+				"text":   "subject:meeting",
+				"after":  "2026-01-15T00:00:00Z",
+				"before": "2026-01-31T00:00:00Z",
+			},
+		},
+		{
+			name: "after and before without text",
+			filter: &EmailSearchFilter{
+				After:  "2026-01-15T00:00:00Z",
+				Before: "2026-01-31T00:00:00Z",
+			},
+			want: map[string]any{
+				"after":  "2026-01-15T00:00:00Z",
+				"before": "2026-01-31T00:00:00Z",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.filter.ToJMAPFilter()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ToJMAPFilter() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
