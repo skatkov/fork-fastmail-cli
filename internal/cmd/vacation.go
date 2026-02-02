@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/salmonumbrella/fastmail-cli/internal/dateparse"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
 	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/spf13/cobra"
@@ -83,8 +84,8 @@ func newVacationSetCmd(app *App) *cobra.Command {
 		Short: "Set vacation/auto-reply settings",
 		Long: `Configure vacation auto-reply settings.
 
-Dates should be in RFC3339 format (e.g., 2025-12-25T00:00:00Z) or
-simple date format (YYYY-MM-DD) which will be converted to midnight UTC.
+Dates should be in RFC3339 format (e.g., 2025-12-25T00:00:00Z),
+simple date format (YYYY-MM-DD), or relative expressions like yesterday, 2h ago, or monday.
 
 Examples:
   fastmail vacation set --enable --subject "Away" --body "I'm on vacation"
@@ -149,8 +150,8 @@ Examples:
 	cmd.Flags().StringVar(&subject, "subject", "", "Auto-reply subject line")
 	cmd.Flags().StringVar(&body, "body", "", "Auto-reply message body")
 	cmd.Flags().StringVar(&htmlBody, "html", "", "Auto-reply HTML body (not sanitized, use with caution)")
-	cmd.Flags().StringVar(&fromDate, "from", "", "Start date (YYYY-MM-DD or RFC3339)")
-	cmd.Flags().StringVar(&untilDate, "until", "", "End date (YYYY-MM-DD or RFC3339)")
+	cmd.Flags().StringVar(&fromDate, "from", "", "Start date (RFC3339, YYYY-MM-DD, or relative like yesterday, 2h ago, monday)")
+	cmd.Flags().StringVar(&untilDate, "until", "", "End date (RFC3339, YYYY-MM-DD, or relative like yesterday, 2h ago, monday)")
 
 	return cmd
 }
@@ -186,17 +187,16 @@ func newVacationDisableCmd(app *App) *cobra.Command {
 }
 
 // parseVacationDate parses a date string and returns RFC3339 format.
-// Accepts YYYY-MM-DD (converts to midnight UTC) or full RFC3339.
+// Accepts RFC3339, YYYY-MM-DD (converted to midnight UTC), or relative expressions.
 func parseVacationDate(s string) (string, error) {
 	// Try RFC3339 first
 	if _, err := time.Parse(time.RFC3339, s); err == nil {
 		return s, nil
 	}
 
-	// Try simple date format
-	t, err := time.Parse("2006-01-02", s)
+	t, err := dateparse.ParseDateTimeNow(s)
 	if err != nil {
-		return "", fmt.Errorf("use YYYY-MM-DD or RFC3339 format")
+		return "", fmt.Errorf("use RFC3339, YYYY-MM-DD, or relative expressions like yesterday, 2h ago, monday")
 	}
 
 	return t.UTC().Format(time.RFC3339), nil

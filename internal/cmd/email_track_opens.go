@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/salmonumbrella/fastmail-cli/internal/dateparse"
 	"github.com/salmonumbrella/fastmail-cli/internal/tracking"
 	"github.com/spf13/cobra"
 )
@@ -43,7 +44,7 @@ func newEmailTrackOpensCmd(app *App) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&to, "to", "", "Filter by recipient email")
-	cmd.Flags().StringVar(&since, "since", "", "Filter by time (e.g., '24h', '2024-01-01')")
+	cmd.Flags().StringVar(&since, "since", "", "Filter by time (e.g., '24h', 'yesterday', '2h ago', 'monday', '2024-01-01')")
 
 	return cmd
 }
@@ -200,17 +201,10 @@ func parseTrackingSince(s string) (string, error) {
 		return "", fmt.Errorf("empty --since")
 	}
 
-	if d, err := time.ParseDuration(s); err == nil {
-		return time.Now().Add(-d).UTC().Format(time.RFC3339), nil
+	t, err := dateparse.ParseDateTimeNow(s)
+	if err != nil {
+		return "", fmt.Errorf("invalid --since %q (use RFC3339, YYYY-MM-DD, or relative like yesterday, 2h ago, monday)", s)
 	}
 
-	if t, err := time.Parse("2006-01-02", s); err == nil {
-		return t.UTC().Format(time.RFC3339), nil
-	}
-
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t.UTC().Format(time.RFC3339), nil
-	}
-
-	return "", fmt.Errorf("invalid --since %q (use duration like 24h, date YYYY-MM-DD, or RFC3339)", s)
+	return t.UTC().Format(time.RFC3339), nil
 }

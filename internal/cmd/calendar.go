@@ -11,6 +11,7 @@ import (
 
 	"github.com/salmonumbrella/fastmail-cli/internal/caldav"
 	"github.com/salmonumbrella/fastmail-cli/internal/config"
+	"github.com/salmonumbrella/fastmail-cli/internal/dateparse"
 	"github.com/salmonumbrella/fastmail-cli/internal/jmap"
 	"github.com/salmonumbrella/fastmail-cli/internal/outfmt"
 	"github.com/salmonumbrella/fastmail-cli/internal/validation"
@@ -113,7 +114,8 @@ func newCalendarEventsCmd(app *App) *cobra.Command {
 		Short: "List calendar events",
 		Long: `List calendar events with optional filtering by calendar, date range, and limit.
 
-Dates should be in RFC3339 format (e.g., 2025-12-19T00:00:00Z) or YYYY-MM-DD.`,
+Dates should be in RFC3339 format (e.g., 2025-12-19T00:00:00Z), YYYY-MM-DD,
+or relative expressions like yesterday, 2h ago, or monday.`,
 		Example: `  fastmail calendar events
   fastmail calendar events --calendar <id>
   fastmail calendar events --from 2025-12-01 --to 2025-12-31
@@ -177,8 +179,8 @@ Dates should be in RFC3339 format (e.g., 2025-12-19T00:00:00Z) or YYYY-MM-DD.`,
 	}
 
 	cmd.Flags().StringVar(&calendarID, "calendar", "", "Filter by calendar ID")
-	cmd.Flags().StringVar(&fromDate, "from", "", "Start date (RFC3339 or YYYY-MM-DD)")
-	cmd.Flags().StringVar(&toDate, "to", "", "End date (RFC3339 or YYYY-MM-DD)")
+	cmd.Flags().StringVar(&fromDate, "from", "", "Start date (RFC3339, YYYY-MM-DD, or relative like yesterday, 2h ago, monday)")
+	cmd.Flags().StringVar(&toDate, "to", "", "End date (RFC3339, YYYY-MM-DD, or relative like yesterday, 2h ago, monday)")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Maximum number of events to retrieve")
 
 	return cmd
@@ -281,7 +283,8 @@ func newCalendarEventCreateCmd(app *App) *cobra.Command {
 		Long: `Create a new calendar event with the specified details.
 
 Required fields: --calendar, --title, --start, --end
-Dates should be in RFC3339 format (e.g., 2025-12-19T15:00:00Z) or YYYY-MM-DD for all-day events.`,
+Dates should be in RFC3339 format (e.g., 2025-12-19T15:00:00Z), YYYY-MM-DD for all-day events,
+or relative expressions like yesterday, 2h ago, or monday.`,
 		Example: `  fastmail calendar event-create --calendar <id> --title "Meeting" --start "2025-12-19T15:00:00Z" --end "2025-12-19T16:00:00Z"
   fastmail calendar event-create --calendar <id> --title "Birthday" --start "2025-12-25" --end "2025-12-26" --all-day
   fastmail calendar event-create --calendar <id> --title "Lunch" --start "2025-12-20T12:00:00Z" --end "2025-12-20T13:00:00Z" --location "Restaurant"`,
@@ -485,21 +488,14 @@ func newCalendarEventDeleteCmd(app *App) *cobra.Command {
 
 // Helper functions
 
-// parseDateTime parses a date/time string in RFC3339 or YYYY-MM-DD format
+// parseDateTime parses RFC3339, YYYY-MM-DD, or relative expressions like yesterday, 2h ago, or monday.
 func parseDateTime(s string) (time.Time, error) {
-	// Try RFC3339 first
-	t, err := time.Parse(time.RFC3339, s)
-	if err == nil {
-		return t, nil
+	t, err := dateparse.ParseDateTimeNow(s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid date format (expected RFC3339, YYYY-MM-DD, or relative like yesterday, 2h ago, monday): %s", s)
 	}
 
-	// Try YYYY-MM-DD format
-	t, err = time.Parse("2006-01-02", s)
-	if err == nil {
-		return t, nil
-	}
-
-	return time.Time{}, fmt.Errorf("invalid date format (expected RFC3339 or YYYY-MM-DD): %s", s)
+	return t, nil
 }
 
 // formatEventTime formats an event time for display
