@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	cerrors "github.com/salmonumbrella/fastmail-cli/internal/errors"
 	"github.com/salmonumbrella/fastmail-cli/internal/format"
@@ -101,7 +102,9 @@ func newEmailSearchCmd(app *App) *cobra.Command {
 Examples:
   fastmail email search "from:alice@example.com"
   fastmail email search --snippets "invoice"
-  fastmail email search "subject:meeting after:2025-01-01"`,
+  fastmail email search "subject:meeting after:2025-01-01"
+  fastmail email search "subject:meeting after:yesterday"
+  fastmail email search "subject:meeting after:'2h ago'"`,
 		Args: cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
@@ -112,10 +115,15 @@ Examples:
 			var emails []jmap.Email
 			var searchSnippets []jmap.SearchSnippet
 
+			query, err := normalizeEmailSearchQuery(args[0], time.Now())
+			if err != nil {
+				return err
+			}
+
 			if snippets {
-				emails, searchSnippets, err = client.SearchEmailsWithSnippets(cmd.Context(), args[0], limit)
+				emails, searchSnippets, err = client.SearchEmailsWithSnippets(cmd.Context(), query, limit)
 			} else {
-				emails, err = client.SearchEmails(cmd.Context(), args[0], limit)
+				emails, err = client.SearchEmails(cmd.Context(), query, limit)
 			}
 
 			if err != nil {
@@ -142,7 +150,7 @@ Examples:
 			}
 
 			if len(emails) == 0 {
-				printNoResults("No emails found matching '%s'", args[0])
+				printNoResults("No emails found matching '%s'", query)
 				return nil
 			}
 

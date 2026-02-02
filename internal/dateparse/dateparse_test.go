@@ -59,9 +59,9 @@ func TestParseDateTime_RelativeDuration(t *testing.T) {
 			want: now.Add(-2 * time.Hour),
 		},
 		{
-			name: "hours without ago",
+			name: "hours without ago (future)",
 			in:   "2h",
-			want: now.Add(-2 * time.Hour),
+			want: now.Add(2 * time.Hour),
 		},
 		{
 			name: "days ago",
@@ -71,7 +71,12 @@ func TestParseDateTime_RelativeDuration(t *testing.T) {
 		{
 			name: "weeks ago",
 			in:   "1w",
-			want: now.Add(-7 * 24 * time.Hour),
+			want: now.Add(7 * 24 * time.Hour),
+		},
+		{
+			name: "months ago",
+			in:   "1mo ago",
+			want: now.Add(-30 * 24 * time.Hour),
 		},
 	}
 
@@ -90,16 +95,26 @@ func TestParseDateTime_RelativeDuration(t *testing.T) {
 
 func TestParseDateTime_Weekday(t *testing.T) {
 	loc := time.FixedZone("Test", -5*60*60)
-	now := time.Date(2025, 1, 15, 10, 30, 0, 0, loc)
+	now := time.Date(2025, 1, 15, 10, 30, 0, 0, loc) // Wednesday
 
 	got, err := ParseDateTime("monday", now)
 	if err != nil {
 		t.Fatalf("ParseDateTime(\"monday\") error = %v", err)
 	}
 
-	want := time.Date(2025, 1, 13, 0, 0, 0, 0, loc)
+	want := time.Date(2025, 1, 20, 0, 0, 0, 0, loc)
 	if !got.Equal(want) {
 		t.Fatalf("ParseDateTime(\"monday\") = %v, want %v", got, want)
+	}
+
+	got, err = ParseDateTime("next friday", now)
+	if err != nil {
+		t.Fatalf("ParseDateTime(\"next friday\") error = %v", err)
+	}
+
+	want = time.Date(2025, 1, 17, 0, 0, 0, 0, loc)
+	if !got.Equal(want) {
+		t.Fatalf("ParseDateTime(\"next friday\") = %v, want %v", got, want)
 	}
 }
 
@@ -131,5 +146,8 @@ func TestParseDateTime_Invalid(t *testing.T) {
 	now := time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC)
 	if _, err := ParseDateTime("not-a-date", now); err == nil {
 		t.Fatalf("expected error for invalid date")
+	}
+	if _, err := ParseDateTime("0h ago", now); err == nil {
+		t.Fatalf("expected error for invalid relative date")
 	}
 }

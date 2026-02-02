@@ -2,6 +2,7 @@ package dateparse
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -33,12 +34,12 @@ func ParseDateTime(s string, now time.Time) (time.Time, error) {
 		return startOfDay(now.AddDate(0, 0, 1)), nil
 	}
 
-	if d, ok := parseRelativeDuration(normalized); ok {
-		return now.Add(-d), nil
-	}
-
 	if t, ok := parseWeekday(normalized, now); ok {
 		return t, nil
+	}
+
+	if t, ok, err := parseRelative(normalized, now); ok {
+		return t, err
 	}
 
 	if t, err := time.Parse(time.RFC3339, raw); err == nil {
@@ -57,76 +58,91 @@ func startOfDay(t time.Time) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, t.Location())
 }
 
-func parseRelativeDuration(input string) (time.Duration, bool) {
+func parseRelative(input string, now time.Time) (time.Time, bool, error) {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {
-		return 0, false
+		return time.Time{}, false, nil
 	}
 
 	if strings.HasSuffix(trimmed, "ago") {
-		trimmed = strings.TrimSpace(strings.TrimSuffix(trimmed, "ago"))
-	}
-	if trimmed == "" {
-		return 0, false
+		value := strings.TrimSpace(strings.TrimSuffix(trimmed, "ago"))
+		if value == "" {
+			return time.Time{}, true, fmt.Errorf("invalid relative time %q", input)
+		}
+
+		d, ok := parseDurationValue(value)
+		if !ok || d <= 0 {
+			return time.Time{}, true, fmt.Errorf("invalid relative time %q", input)
+		}
+		return now.Add(-d), true, nil
 	}
 
-	if d, err := time.ParseDuration(trimmed); err == nil {
+	d, ok := parseDurationValue(trimmed)
+	if !ok || d <= 0 {
+		return time.Time{}, false, nil
+	}
+	return now.Add(d), true, nil
+}
+
+func parseDurationValue(input string) (time.Duration, bool) {
+	if d, err := time.ParseDuration(input); err == nil {
 		return d, true
 	}
 
-	// Support single-unit durations with day/week suffixes (e.g., 2d, 1w).
-	num, unit := splitNumberUnit(trimmed)
-	if num == "" || unit == "" {
+	matches := durationTokenRE.FindStringSubmatch(input)
+	if len(matches) != 3 {
 		return 0, false
 	}
 
-	value, err := strconv.Atoi(num)
+	value, err := strconv.Atoi(matches[1])
 	if err != nil {
 		return 0, false
 	}
 
-	switch unit {
-	case "s":
-		return time.Duration(value) * time.Second, true
-	case "m":
-		return time.Duration(value) * time.Minute, true
-	case "h":
-		return time.Duration(value) * time.Hour, true
-	case "d":
-		return time.Duration(value) * 24 * time.Hour, true
+	switch matches[2] {
+	case "mo":
+		return time.Duration(value) * 30 * 24 * time.Hour, true
 	case "w":
 		return time.Duration(value) * 7 * 24 * time.Hour, true
+	case "d":
+		return time.Duration(value) * 24 * time.Hour, true
+	case "h":
+		return time.Duration(value) * time.Hour, true
+	case "m":
+		return time.Duration(value) * time.Minute, true
 	default:
 		return 0, false
 	}
 }
 
-func splitNumberUnit(s string) (string, string) {
-	var i int
-	for i < len(s) {
-		c := s[i]
-		if c < '0' || c > '9' {
-			break
-		}
-		i++
-	}
-	if i == 0 {
-		return "", ""
-	}
-	num := s[:i]
-	unit := strings.TrimSpace(s[i:])
-	return num, unit
-}
-
 func parseWeekday(input string, now time.Time) (time.Time, bool) {
-	weekday, ok := weekdayAliases[input]
+	s := strings.TrimSpace(input)
+	if s == "" {
+		return time.Time{}, false
+	}
+
+	next := false
+	if strings.HasPrefix(s, "next ") {
+		s = strings.TrimSpace(strings.TrimPrefix(s, "next "))
+		next = true
+	} else if strings.HasPrefix(s, "this ") {
+		s = strings.TrimSpace(strings.TrimPrefix(s, "this "))
+	}
+
+	weekday, ok := weekdayAliases[s]
 	if !ok {
 		return time.Time{}, false
 	}
 
-	daysAgo := (int(now.Weekday()) - int(weekday) + 7) % 7
-	target := now.AddDate(0, 0, -daysAgo)
-	return startOfDay(target), true
+	base := startOfDay(now)
+	current := base.Weekday()
+	delta := (int(weekday) - int(current) + 7) % 7
+	if next && delta == 0 {
+		delta = 7
+	}
+
+	target := base.AddDate(0, 0, delta)
+	return target, true
 }
 
 var weekdayAliases = map[string]time.Weekday{
@@ -149,3 +165,5 @@ var weekdayAliases = map[string]time.Weekday{
 	"sat":       time.Saturday,
 	"saturday":  time.Saturday,
 }
+
+var durationTokenRE = regexp.MustCompile(`^(\d+)(mo|w|d|h|m)$`)
