@@ -363,6 +363,239 @@ func (c *Client) SearchEmails(ctx context.Context, searchFilter *EmailSearchFilt
 	return parseEmailList(resp.MethodResponses[1])
 }
 
+// GetDrafts retrieves all draft emails.
+func (c *Client) GetDrafts(ctx context.Context, limit int) ([]Email, error) {
+	session, err := c.GetSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find drafts mailbox
+	mailboxes, err := c.GetMailboxes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var draftsMailboxID string
+	for _, mb := range mailboxes {
+		if mb.Role == "drafts" {
+			draftsMailboxID = mb.ID
+			break
+		}
+	}
+	if draftsMailboxID == "" {
+		return nil, ErrNoDraftsMailbox
+	}
+
+	req := &Request{
+		Using: []string{"urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"},
+		MethodCalls: []MethodCall{
+			{"Email/query", map[string]any{
+				"accountId": session.AccountID,
+				"filter": map[string]any{
+					"inMailbox":  draftsMailboxID,
+					"hasKeyword": "$draft",
+				},
+				"sort":  []map[string]any{{"property": "receivedAt", "isAscending": false}},
+				"limit": limit,
+			}, "query"},
+			{"Email/get", map[string]any{
+				"accountId":  session.AccountID,
+				"#ids":       map[string]any{"resultOf": "query", "name": "Email/query", "path": "/ids"},
+				"properties": []string{"id", "subject", "from", "to", "cc", "receivedAt", "preview", "hasAttachment", "keywords", "threadId"},
+			}, "emails"},
+		},
+	}
+
+	resp, err := c.MakeRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseEmailList(resp.MethodResponses[1])
+}
+
+// UpdateDraft updates an existing draft email.
+func (c *Client) UpdateDraft(ctx context.Context, draftID string, opts SendEmailOpts) error {
+	session, err := c.GetSession(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Build email update object
+	update := map[string]any{}
+
+	if opts.From != "" {
+		update["from"] = []map[string]string{{"email": opts.From}}
+	}
+
+	if len(opts.To) > 0 {
+		to := make([]map[string]string, len(opts.To))
+		for i, addr := range opts.To {
+			to[i] = map[string]string{"email": addr}
+		}
+		update["to"] = to
+	}
+
+	if len(opts.CC) > 0 {
+		cc := make([]map[string]string, len(opts.CC))
+		for i, addr := range opts.CC {
+			cc[i] = map[string]string{"email": addr}
+		}
+		update["cc"] = cc
+	}
+
+	if len(opts.BCC) > 0 {
+		bcc := make([]map[string]string, len(opts.BCC))
+		for i, addr := range opts.BCC {
+			bcc[i] = map[string]string{"email": addr}
+		}
+		update["bcc"] = bcc
+	}
+
+	if opts.Subject != "" {
+		update["subject"] = opts.Subject
+	}
+
+	// Body updates require setting both bodyValues and text/html body parts.
+	if opts.TextBody != "" || opts.HTMLBody != "" {
+		bodyValues := map[string]map[string]string{}
+		if opts.TextBody != "" {
+			update["textBody"] = []map[string]string{{"partId": "text", "type": "text/plain"}}
+			bodyValues["text"] = map[string]string{"value": opts.TextBody}
+		}
+		if opts.HTMLBody != "" {
+			update["htmlBody"] = []map[string]string{{"partId": "html", "type": "text/html"}}
+			bodyValues["html"] = map[string]string{"value": opts.HTMLBody}
+		}
+		update["bodyValues"] = bodyValues
+	}
+
+	if len(update) == 0 {
+		return nil
+	}
+
+	req := &Request{
+		Using: []string{"urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"},
+		MethodCalls: []MethodCall{
+			{"Email/set", map[string]any{
+				"accountId": session.AccountID,
+				"update": map[string]any{
+					draftID: update,
+				},
+			}, "update"},
+		},
+	}
+
+	resp, err := c.MakeRequest(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	result, ok := resp.MethodResponses[0][1].(map[string]any)
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+
+	if notUpdated, ok := result["notUpdated"].(map[string]any); ok {
+		if errInfo, exists := notUpdated[draftID]; exists {
+			return fmt.Errorf("failed to update draft: %v", errInfo)
+		}
+	}
+
+	return nil
+}
+
+// SendDraft sends an existing draft email.
+func (c *Client) SendDraft(ctx context.Context, draftID string) (string, error) {
+	session, err := c.GetSession(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	// Get the draft to verify it's a draft
+	draft, err := c.GetEmailByID(ctx, draftID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get draft: %w", err)
+	}
+	if draft.Keywords != nil && !draft.Keywords["$draft"] {
+		return "", fmt.Errorf("email %s is not a draft", draftID)
+	}
+
+	// Get default identity
+	identity, err := c.getDefaultIdentity(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	// Find sent mailbox
+	mailboxes, err := c.GetMailboxes(ctx)
+	if err != nil {
+		return "", err
+	}
+	var sentMailboxID string
+	for _, mb := range mailboxes {
+		if mb.Role == "sent" {
+			sentMailboxID = mb.ID
+			break
+		}
+	}
+	if sentMailboxID == "" {
+		return "", ErrNoSentMailbox
+	}
+
+	req := &Request{
+		Using: []string{"urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"},
+		MethodCalls: []MethodCall{
+			// Remove $draft keyword and move to sent
+			{"Email/set", map[string]any{
+				"accountId": session.AccountID,
+				"update": map[string]any{
+					draftID: map[string]any{
+						"keywords/$draft": nil, // Remove draft keyword
+						"mailboxIds":      map[string]bool{sentMailboxID: true},
+					},
+				},
+			}, "updateDraft"},
+			// Submit for sending
+			{"EmailSubmission/set", map[string]any{
+				"accountId": session.AccountID,
+				"create": map[string]any{
+					"send": map[string]any{
+						"identityId": identity.ID,
+						"emailId":    draftID,
+					},
+				},
+			}, "send"},
+		},
+	}
+
+	resp, err := c.MakeRequest(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	// Check submission result
+	if len(resp.MethodResponses) >= 2 {
+		if result, ok := resp.MethodResponses[1][1].(map[string]any); ok {
+			if created, ok := result["created"].(map[string]any); ok {
+				if send, ok := created["send"].(map[string]any); ok {
+					if id, ok := send["id"].(string); ok {
+						return id, nil
+					}
+				}
+			}
+			if notCreated, ok := result["notCreated"].(map[string]any); ok {
+				if errInfo, exists := notCreated["send"]; exists {
+					return "", fmt.Errorf("failed to send draft: %v", errInfo)
+				}
+			}
+		}
+	}
+
+	return "", nil
+}
+
 // CreateReplyDraft creates a draft that is threaded as a reply to an existing email.
 func (c *Client) CreateReplyDraft(ctx context.Context, replyToID string, opts SendEmailOpts) (string, error) {
 	// Fetch the original email to get threading headers
@@ -1555,6 +1788,24 @@ func (c *Client) GetIdentities(ctx context.Context) ([]Identity, error) {
 	}
 
 	return identities, nil
+}
+
+func (c *Client) getDefaultIdentity(ctx context.Context) (*Identity, error) {
+	identities, err := c.GetIdentities(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(identities) == 0 {
+		return nil, ErrNoIdentities
+	}
+
+	for i := range identities {
+		if !identities[i].MayDelete {
+			return &identities[i], nil
+		}
+	}
+
+	return &identities[0], nil
 }
 
 // Helper functions for parsing

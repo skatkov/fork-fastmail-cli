@@ -12,7 +12,10 @@ import (
 type MockEmailService struct {
 	GetEmailsFunc                func(ctx context.Context, mailboxID string, limit int) ([]Email, error)
 	SearchEmailsFunc             func(ctx context.Context, filter *EmailSearchFilter, limit int) ([]Email, error)
+	GetDraftsFunc                func(ctx context.Context, limit int) ([]Email, error)
 	GetEmailByIDFunc             func(ctx context.Context, id string) (*Email, error)
+	UpdateDraftFunc              func(ctx context.Context, draftID string, opts SendEmailOpts) error
+	SendDraftFunc                func(ctx context.Context, draftID string) (string, error)
 	SendEmailFunc                func(ctx context.Context, opts SendEmailOpts) (string, error)
 	DeleteEmailFunc              func(ctx context.Context, id string) error
 	MoveEmailFunc                func(ctx context.Context, id, targetMailboxID string) error
@@ -46,11 +49,32 @@ func (m *MockEmailService) SearchEmails(ctx context.Context, filter *EmailSearch
 	return nil, nil
 }
 
+func (m *MockEmailService) GetDrafts(ctx context.Context, limit int) ([]Email, error) {
+	if m.GetDraftsFunc != nil {
+		return m.GetDraftsFunc(ctx, limit)
+	}
+	return nil, nil
+}
+
 func (m *MockEmailService) GetEmailByID(ctx context.Context, id string) (*Email, error) {
 	if m.GetEmailByIDFunc != nil {
 		return m.GetEmailByIDFunc(ctx, id)
 	}
 	return nil, nil
+}
+
+func (m *MockEmailService) UpdateDraft(ctx context.Context, draftID string, opts SendEmailOpts) error {
+	if m.UpdateDraftFunc != nil {
+		return m.UpdateDraftFunc(ctx, draftID, opts)
+	}
+	return nil
+}
+
+func (m *MockEmailService) SendDraft(ctx context.Context, draftID string) (string, error) {
+	if m.SendDraftFunc != nil {
+		return m.SendDraftFunc(ctx, draftID)
+	}
+	return "", nil
 }
 
 func (m *MockEmailService) SendEmail(ctx context.Context, opts SendEmailOpts) (string, error) {

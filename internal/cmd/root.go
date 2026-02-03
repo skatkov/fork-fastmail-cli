@@ -111,6 +111,8 @@ func Execute(args []string) error {
 	root.AddCommand(newCalendarCmd(app))
 	root.AddCommand(newQuotaCmd(app))
 	root.AddCommand(newFilesCmd(app))
+	root.AddCommand(newSieveCmd(app))
+	root.AddCommand(newDraftCmd(app))
 
 	err := root.Execute()
 	if err != nil {

@@ -8,9 +8,11 @@ Fastmail in your terminal. Manage email, masked addresses, calendars, contacts, 
 - **Calendar** - manage calendars and events, send invitations
 - **Contacts** - create, update, and search contacts
 - **Email** - send, receive, search, and organize emails
+- **Drafts** - create, list, and send draft emails
 - **Files** - upload, download, and manage files via WebDAV
 - **Masked email** - create disposable addresses to protect your inbox
 - **Multiple accounts** - manage multiple Fastmail accounts
+- **Sieve** - manage custom Sieve filters (requires browser session credentials)
 - **Vacation** - set out-of-office auto-reply messages
 
 ## API Availability
@@ -37,6 +39,7 @@ These commands require additional API access that is **not available** to standa
 | `vacation` | Auto-reply settings | Requires VacationResponse scope |
 | `files` | File storage via WebDAV | Requires Files scope |
 | `quota` | Storage quota information | Requires Quota scope |
+| `sieve` | Sieve filter management | Requires browser session credentials (internal API) |
 
 These features may become available through:
 - Fastmail business/enterprise accounts
@@ -141,6 +144,30 @@ fastmail email mailbox-delete <name>
 fastmail email bulk-delete <emailId>...
 fastmail email bulk-move <emailId>... --to <mailbox>
 fastmail email bulk-mark-read <emailId>... [--unread]
+```
+
+### Drafts
+
+```bash
+fastmail draft list [--limit <n>]
+fastmail draft get <draftId>
+fastmail draft new --to <email> --subject <text> --body <text>
+fastmail draft new --reply-to <emailId> --body <text>
+fastmail draft send <draftId> [--yes]
+fastmail draft delete <draftId> [--yes]
+```
+
+Aliases: `drafts`
+
+### Sieve
+
+Sieve management uses Fastmail's internal API and requires browser session credentials.
+
+```bash
+fastmail sieve auth --token <fma1-...> --cookie "__Host-s_...=..."
+fastmail sieve get [--block start|middle|end|require|blocked|rules]
+fastmail sieve set --start-file <file> [--middle-file <file>] [--end-file <file>]
+fastmail sieve edit --block start|middle|end
 ```
 
 ### Masked Email

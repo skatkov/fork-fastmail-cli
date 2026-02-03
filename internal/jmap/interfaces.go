@@ -15,8 +15,17 @@ type EmailService interface {
 	// SearchEmails searches for emails matching a filter
 	SearchEmails(ctx context.Context, filter *EmailSearchFilter, limit int) ([]Email, error)
 
+	// GetDrafts retrieves draft emails
+	GetDrafts(ctx context.Context, limit int) ([]Email, error)
+
 	// GetEmailByID retrieves a specific email by ID with full details
 	GetEmailByID(ctx context.Context, id string) (*Email, error)
+
+	// UpdateDraft updates an existing draft
+	UpdateDraft(ctx context.Context, draftID string, opts SendEmailOpts) error
+
+	// SendDraft sends an existing draft
+	SendDraft(ctx context.Context, draftID string) (string, error)
 
 	// SendEmail sends an email with the provided options
 	SendEmail(ctx context.Context, opts SendEmailOpts) (string, error)
