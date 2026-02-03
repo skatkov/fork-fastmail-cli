@@ -117,7 +117,8 @@ func newDraftNewCmd(app *App) *cobra.Command {
 
 Examples:
   fastmail draft new --to user@example.com --subject "Hello" --body "Hi there"
-  fastmail draft new --reply-to <email-id>  # Creates a threaded reply draft`,
+  fastmail draft new --to user@example.com --subject "Hello" --html "<h1>Hi</h1>"
+  fastmail draft new --reply-to <email-id> --body "Thanks!"  # Creates a threaded reply draft`,
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -213,10 +214,6 @@ func newDraftSendCmd(app *App) *cobra.Command {
 			draft, err := client.GetEmailByID(cmd.Context(), draftID)
 			if err != nil {
 				return fmt.Errorf("failed to get draft: %w", err)
-			}
-
-			if draft.Keywords != nil && !draft.Keywords["$draft"] {
-				return fmt.Errorf("email %s is not a draft", draftID)
 			}
 
 			// Confirm before sending

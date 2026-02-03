@@ -33,6 +33,8 @@ type MockEmailService struct {
 	RenameMailboxFunc            func(ctx context.Context, id, newName string) error
 	SearchEmailsWithSnippetsFunc func(ctx context.Context, filter *EmailSearchFilter, limit int) ([]Email, []SearchSnippet, error)
 	ImportEmailFunc              func(ctx context.Context, opts ImportEmailOpts) (string, error)
+	SaveDraftFunc                func(ctx context.Context, opts SendEmailOpts) (string, error)
+	CreateReplyDraftFunc         func(ctx context.Context, replyToID string, opts SendEmailOpts) (string, error)
 }
 
 func (m *MockEmailService) GetEmails(ctx context.Context, mailboxID string, limit int) ([]Email, error) {
@@ -192,6 +194,20 @@ func (m *MockEmailService) SearchEmailsWithSnippets(ctx context.Context, filter 
 func (m *MockEmailService) ImportEmail(ctx context.Context, opts ImportEmailOpts) (string, error) {
 	if m.ImportEmailFunc != nil {
 		return m.ImportEmailFunc(ctx, opts)
+	}
+	return "", nil
+}
+
+func (m *MockEmailService) SaveDraft(ctx context.Context, opts SendEmailOpts) (string, error) {
+	if m.SaveDraftFunc != nil {
+		return m.SaveDraftFunc(ctx, opts)
+	}
+	return "", nil
+}
+
+func (m *MockEmailService) CreateReplyDraft(ctx context.Context, replyToID string, opts SendEmailOpts) (string, error) {
+	if m.CreateReplyDraftFunc != nil {
+		return m.CreateReplyDraftFunc(ctx, replyToID, opts)
 	}
 	return "", nil
 }

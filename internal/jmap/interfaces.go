@@ -77,6 +77,12 @@ type EmailService interface {
 
 	// ImportEmail imports a raw RFC 5322 message
 	ImportEmail(ctx context.Context, opts ImportEmailOpts) (string, error)
+
+	// SaveDraft saves a new draft email
+	SaveDraft(ctx context.Context, opts SendEmailOpts) (string, error)
+
+	// CreateReplyDraft creates a draft as a reply to an existing email
+	CreateReplyDraft(ctx context.Context, replyToID string, opts SendEmailOpts) (string, error)
 }
 
 // MaskedEmailService defines the interface for masked email (alias) operations.
@@ -162,4 +168,10 @@ type CalendarService interface {
 type QuotaService interface {
 	// GetQuotas retrieves all quotas for the account
 	GetQuotas(ctx context.Context) ([]Quota, error)
+}
+
+// SieveService defines Sieve filter management operations.
+type SieveService interface {
+	GetSieveBlocks(ctx context.Context) (*SieveBlocks, error)
+	SetSieveBlocks(ctx context.Context, opts SetSieveBlocksOpts) error
 }
