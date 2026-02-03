@@ -1546,3 +1546,294 @@ func TestEmailSearchFilter_ToJMAPFilter(t *testing.T) {
 		})
 	}
 }
+
+func TestSendDraft(t *testing.T) {
+	tests := []struct {
+		name           string
+		draftID        string
+		apiResponses   []string // Multiple API responses for different calls
+		wantID         string
+		wantErr        bool
+		wantErrContain string
+	}{
+		{
+			name:    "successful send with onSuccessUpdateEmail",
+			draftID: "draft123",
+			apiResponses: []string{
+				// First call: Email/get to verify it's a draft
+				`{
+					"methodResponses": [
+						["Email/get", {
+							"accountId": "acc123",
+							"list": [{
+								"id": "draft123",
+								"subject": "Test Draft",
+								"keywords": {"$draft": true}
+							}]
+						}, "getEmail"]
+					]
+				}`,
+				// Second call: Identity/get for default identity
+				`{
+					"methodResponses": [
+						["Identity/get", {
+							"accountId": "acc123",
+							"list": [{"id": "identity1", "email": "test@example.com", "mayDelete": true}]
+						}, "getIdentities"]
+					]
+				}`,
+				// Third call: Mailbox/get for sent mailbox
+				`{
+					"methodResponses": [
+						["Mailbox/get", {
+							"accountId": "acc123",
+							"list": [
+								{"id": "inbox1", "name": "Inbox", "role": "inbox"},
+								{"id": "sent1", "name": "Sent", "role": "sent"},
+								{"id": "drafts1", "name": "Drafts", "role": "drafts"}
+							]
+						}, "getMailboxes"]
+					]
+				}`,
+				// Fourth call: EmailSubmission/set (with onSuccessUpdateEmail)
+				`{
+					"methodResponses": [
+						["EmailSubmission/set", {
+							"accountId": "acc123",
+							"created": {
+								"send": {"id": "submission123"}
+							}
+						}, "send"]
+					]
+				}`,
+			},
+			wantID:  "submission123",
+			wantErr: false,
+		},
+		{
+			name:    "submission fails - email should stay unchanged",
+			draftID: "draft456",
+			apiResponses: []string{
+				// First call: Email/get to verify it's a draft
+				`{
+					"methodResponses": [
+						["Email/get", {
+							"accountId": "acc123",
+							"list": [{
+								"id": "draft456",
+								"subject": "Test Draft",
+								"keywords": {"$draft": true}
+							}]
+						}, "getEmail"]
+					]
+				}`,
+				// Second call: Identity/get for default identity
+				`{
+					"methodResponses": [
+						["Identity/get", {
+							"accountId": "acc123",
+							"list": [{"id": "identity1", "email": "test@example.com", "mayDelete": true}]
+						}, "getIdentities"]
+					]
+				}`,
+				// Third call: Mailbox/get for sent mailbox
+				`{
+					"methodResponses": [
+						["Mailbox/get", {
+							"accountId": "acc123",
+							"list": [
+								{"id": "inbox1", "name": "Inbox", "role": "inbox"},
+								{"id": "sent1", "name": "Sent", "role": "sent"}
+							]
+						}, "getMailboxes"]
+					]
+				}`,
+				// Fourth call: EmailSubmission/set fails with "forbidden from" error
+				`{
+					"methodResponses": [
+						["EmailSubmission/set", {
+							"accountId": "acc123",
+							"notCreated": {
+								"send": {
+									"type": "forbiddenFrom",
+									"description": "The from address is not allowed for this identity"
+								}
+							}
+						}, "send"]
+					]
+				}`,
+			},
+			wantErr:        true,
+			wantErrContain: "failed to send draft",
+		},
+		{
+			name:    "email is not a draft",
+			draftID: "notadraft123",
+			apiResponses: []string{
+				// First call: Email/get returns email without $draft keyword
+				`{
+					"methodResponses": [
+						["Email/get", {
+							"accountId": "acc123",
+							"list": [{
+								"id": "notadraft123",
+								"subject": "Already Sent",
+								"keywords": {"$seen": true}
+							}]
+						}, "getEmail"]
+					]
+				}`,
+			},
+			wantErr:        true,
+			wantErrContain: "is not a draft",
+		},
+		{
+			name:    "no sent mailbox found",
+			draftID: "draft789",
+			apiResponses: []string{
+				// First call: Email/get to verify it's a draft
+				`{
+					"methodResponses": [
+						["Email/get", {
+							"accountId": "acc123",
+							"list": [{
+								"id": "draft789",
+								"subject": "Test Draft",
+								"keywords": {"$draft": true}
+							}]
+						}, "getEmail"]
+					]
+				}`,
+				// Second call: Identity/get for default identity
+				`{
+					"methodResponses": [
+						["Identity/get", {
+							"accountId": "acc123",
+							"list": [{"id": "identity1", "email": "test@example.com", "mayDelete": true}]
+						}, "getIdentities"]
+					]
+				}`,
+				// Third call: Mailbox/get - no sent mailbox
+				`{
+					"methodResponses": [
+						["Mailbox/get", {
+							"accountId": "acc123",
+							"list": [
+								{"id": "inbox1", "name": "Inbox", "role": "inbox"},
+								{"id": "drafts1", "name": "Drafts", "role": "drafts"}
+							]
+						}, "getMailboxes"]
+					]
+				}`,
+			},
+			wantErr:        true,
+			wantErrContain: "sent mailbox",
+		},
+		{
+			name:    "submission fails with invalid recipients",
+			draftID: "draft-bad-recipients",
+			apiResponses: []string{
+				// First call: Email/get to verify it's a draft
+				`{
+					"methodResponses": [
+						["Email/get", {
+							"accountId": "acc123",
+							"list": [{
+								"id": "draft-bad-recipients",
+								"subject": "Test Draft",
+								"keywords": {"$draft": true}
+							}]
+						}, "getEmail"]
+					]
+				}`,
+				// Second call: Identity/get for default identity
+				`{
+					"methodResponses": [
+						["Identity/get", {
+							"accountId": "acc123",
+							"list": [{"id": "identity1", "email": "test@example.com", "mayDelete": true}]
+						}, "getIdentities"]
+					]
+				}`,
+				// Third call: Mailbox/get for sent mailbox
+				`{
+					"methodResponses": [
+						["Mailbox/get", {
+							"accountId": "acc123",
+							"list": [
+								{"id": "sent1", "name": "Sent", "role": "sent"}
+							]
+						}, "getMailboxes"]
+					]
+				}`,
+				// Fourth call: EmailSubmission/set fails with invalid recipients
+				`{
+					"methodResponses": [
+						["EmailSubmission/set", {
+							"accountId": "acc123",
+							"notCreated": {
+								"send": {
+									"type": "invalidRecipients",
+									"description": "No valid recipients found"
+								}
+							}
+						}, "send"]
+					]
+				}`,
+			},
+			wantErr:        true,
+			wantErrContain: "failed to send draft",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			callIndex := 0
+
+			apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if callIndex < len(tt.apiResponses) {
+					_, _ = w.Write([]byte(tt.apiResponses[callIndex]))
+					callIndex++
+				} else {
+					// Return empty response if we run out of expected responses
+					_, _ = w.Write([]byte(`{"methodResponses": []}`))
+				}
+			}))
+			defer apiServer.Close()
+
+			sessionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{
+					"apiUrl": "` + apiServer.URL + `",
+					"uploadUrl": "` + apiServer.URL + `/{accountId}/",
+					"downloadUrl": "` + apiServer.URL + `",
+					"accounts": {"acc123": {}},
+					"primaryAccounts": {"urn:ietf:params:jmap:mail": "acc123"}
+				}`))
+			}))
+			defer sessionServer.Close()
+
+			client := NewClientWithBaseURL("test-token", sessionServer.URL)
+
+			got, err := client.SendDraft(context.Background(), tt.draftID)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error but got none")
+					return
+				}
+				if tt.wantErrContain != "" && !strings.Contains(err.Error(), tt.wantErrContain) {
+					t.Errorf("expected error containing %q, got %q", tt.wantErrContain, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			if got != tt.wantID {
+				t.Errorf("got submission ID %s, want %s", got, tt.wantID)
+			}
+		})
+	}
+}

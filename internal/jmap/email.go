@@ -507,6 +507,8 @@ func (c *Client) UpdateDraft(ctx context.Context, draftID string, opts SendEmail
 }
 
 // SendDraft sends an existing draft email.
+// Uses JMAP's onSuccessUpdateEmail to atomically update the email only if submission succeeds.
+// If submission fails, the email stays in Drafts with $draft keyword intact.
 func (c *Client) SendDraft(ctx context.Context, draftID string) (string, error) {
 	session, err := c.GetSession(ctx)
 	if err != nil {
@@ -544,26 +546,26 @@ func (c *Client) SendDraft(ctx context.Context, draftID string) (string, error) 
 		return "", ErrNoSentMailbox
 	}
 
+	// Use onSuccessUpdateEmail to atomically update the email only if submission succeeds.
+	// The key "#send" references the creation ID "send" in the create map.
+	// If submission fails, the email stays unchanged in Drafts.
 	req := &Request{
 		Using: []string{"urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"},
 		MethodCalls: []MethodCall{
-			// Remove $draft keyword and move to sent
-			{"Email/set", map[string]any{
-				"accountId": session.AccountID,
-				"update": map[string]any{
-					draftID: map[string]any{
-						"keywords/$draft": nil, // Remove draft keyword
-						"mailboxIds":      map[string]bool{sentMailboxID: true},
-					},
-				},
-			}, "updateDraft"},
-			// Submit for sending
 			{"EmailSubmission/set", map[string]any{
 				"accountId": session.AccountID,
 				"create": map[string]any{
 					"send": map[string]any{
 						"identityId": identity.ID,
 						"emailId":    draftID,
+					},
+				},
+				// onSuccessUpdateEmail: updates to apply to emails only if submission succeeds
+				// The key "#send" is a back-reference to the emailId of the "send" submission
+				"onSuccessUpdateEmail": map[string]any{
+					"#send": map[string]any{
+						"keywords/$draft": nil, // Remove draft keyword
+						"mailboxIds":      map[string]bool{sentMailboxID: true},
 					},
 				},
 			}, "send"},
@@ -575,9 +577,9 @@ func (c *Client) SendDraft(ctx context.Context, draftID string) (string, error) 
 		return "", err
 	}
 
-	// Check submission result
-	if len(resp.MethodResponses) >= 2 {
-		if result, ok := resp.MethodResponses[1][1].(map[string]any); ok {
+	// Check submission result (now it's the first/only response)
+	if len(resp.MethodResponses) >= 1 {
+		if result, ok := resp.MethodResponses[0][1].(map[string]any); ok {
 			if created, ok := result["created"].(map[string]any); ok {
 				if send, ok := created["send"].(map[string]any); ok {
 					if id, ok := send["id"].(string); ok {
