@@ -595,7 +595,7 @@ func (c *Client) SendDraft(ctx context.Context, draftID string) (string, error) 
 		}
 	}
 
-	return "", nil
+	return "", fmt.Errorf("unexpected submission response: no created or notCreated field")
 }
 
 // CreateReplyDraft creates a draft that is threaded as a reply to an existing email.

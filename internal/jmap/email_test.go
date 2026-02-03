@@ -2,6 +2,8 @@ package jmap
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -1549,12 +1551,14 @@ func TestEmailSearchFilter_ToJMAPFilter(t *testing.T) {
 
 func TestSendDraft(t *testing.T) {
 	tests := []struct {
-		name           string
-		draftID        string
-		apiResponses   []string // Multiple API responses for different calls
-		wantID         string
-		wantErr        bool
-		wantErrContain string
+		name                       string
+		draftID                    string
+		apiResponses               []string // Multiple API responses for different calls
+		wantID                     string
+		wantErr                    bool
+		wantErrContain             string
+		verifyOnSuccessUpdateEmail bool // If true, verify onSuccessUpdateEmail is in the request
+		expectedSentMailboxID      string
 	}{
 		{
 			name:    "successful send with onSuccessUpdateEmail",
@@ -1607,8 +1611,10 @@ func TestSendDraft(t *testing.T) {
 					]
 				}`,
 			},
-			wantID:  "submission123",
-			wantErr: false,
+			wantID:                     "submission123",
+			wantErr:                    false,
+			verifyOnSuccessUpdateEmail: true,
+			expectedSentMailboxID:      "sent1",
 		},
 		{
 			name:    "submission fails - email should stay unchanged",
@@ -1784,14 +1790,71 @@ func TestSendDraft(t *testing.T) {
 			wantErr:        true,
 			wantErrContain: "failed to send draft",
 		},
+		{
+			name:    "unexpected response format - no created or notCreated",
+			draftID: "draft-unexpected",
+			apiResponses: []string{
+				// First call: Email/get to verify it's a draft
+				`{
+					"methodResponses": [
+						["Email/get", {
+							"accountId": "acc123",
+							"list": [{
+								"id": "draft-unexpected",
+								"subject": "Test Draft",
+								"keywords": {"$draft": true}
+							}]
+						}, "getEmail"]
+					]
+				}`,
+				// Second call: Identity/get for default identity
+				`{
+					"methodResponses": [
+						["Identity/get", {
+							"accountId": "acc123",
+							"list": [{"id": "identity1", "email": "test@example.com", "mayDelete": true}]
+						}, "getIdentities"]
+					]
+				}`,
+				// Third call: Mailbox/get for sent mailbox
+				`{
+					"methodResponses": [
+						["Mailbox/get", {
+							"accountId": "acc123",
+							"list": [
+								{"id": "sent1", "name": "Sent", "role": "sent"}
+							]
+						}, "getMailboxes"]
+					]
+				}`,
+				// Fourth call: EmailSubmission/set - response missing both created and notCreated
+				`{
+					"methodResponses": [
+						["EmailSubmission/set", {
+							"accountId": "acc123"
+						}, "send"]
+					]
+				}`,
+			},
+			wantErr:        true,
+			wantErrContain: "unexpected submission response",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			callIndex := 0
+			var capturedSubmissionRequest map[string]any
 
 			apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+
+				// Capture request body for the EmailSubmission/set call (4th call, index 3)
+				if tt.verifyOnSuccessUpdateEmail && callIndex == 3 {
+					body, _ := io.ReadAll(r.Body)
+					_ = json.Unmarshal(body, &capturedSubmissionRequest)
+				}
+
 				if callIndex < len(tt.apiResponses) {
 					_, _ = w.Write([]byte(tt.apiResponses[callIndex]))
 					callIndex++
@@ -1833,6 +1896,56 @@ func TestSendDraft(t *testing.T) {
 			}
 			if got != tt.wantID {
 				t.Errorf("got submission ID %s, want %s", got, tt.wantID)
+			}
+
+			// Verify onSuccessUpdateEmail was included in the request
+			if tt.verifyOnSuccessUpdateEmail {
+				methodCalls, ok := capturedSubmissionRequest["methodCalls"].([]any)
+				if !ok || len(methodCalls) == 0 {
+					t.Errorf("expected methodCalls in request, got %v", capturedSubmissionRequest)
+					return
+				}
+				firstCall, ok := methodCalls[0].([]any)
+				if !ok || len(firstCall) < 2 {
+					t.Errorf("expected method call array, got %v", methodCalls[0])
+					return
+				}
+				if firstCall[0] != "EmailSubmission/set" {
+					t.Errorf("expected EmailSubmission/set, got %v", firstCall[0])
+					return
+				}
+				args, ok := firstCall[1].(map[string]any)
+				if !ok {
+					t.Errorf("expected method args map, got %v", firstCall[1])
+					return
+				}
+
+				// Verify onSuccessUpdateEmail exists with #send key
+				onSuccess, ok := args["onSuccessUpdateEmail"].(map[string]any)
+				if !ok {
+					t.Errorf("onSuccessUpdateEmail missing or not a map: %v", args["onSuccessUpdateEmail"])
+					return
+				}
+				sendUpdate, ok := onSuccess["#send"].(map[string]any)
+				if !ok {
+					t.Errorf("onSuccessUpdateEmail missing #send key: %v", onSuccess)
+					return
+				}
+
+				// Verify keywords/$draft is set to nil (null in JSON)
+				if _, exists := sendUpdate["keywords/$draft"]; !exists {
+					t.Errorf("onSuccessUpdateEmail missing keywords/$draft: %v", sendUpdate)
+				}
+
+				// Verify mailboxIds contains the sent mailbox
+				mailboxIds, ok := sendUpdate["mailboxIds"].(map[string]any)
+				if !ok {
+					t.Errorf("onSuccessUpdateEmail missing mailboxIds: %v", sendUpdate)
+					return
+				}
+				if _, exists := mailboxIds[tt.expectedSentMailboxID]; !exists {
+					t.Errorf("onSuccessUpdateEmail mailboxIds missing sent mailbox %s: %v", tt.expectedSentMailboxID, mailboxIds)
+				}
 			}
 		})
 	}
