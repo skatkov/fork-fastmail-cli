@@ -91,6 +91,21 @@ changelog:
       - Merge pull request
       - Merge branch
 
+brews:
+  - name: fastmail-cli
+    repository:
+      owner: salmonumbrella
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/salmonumbrella/fastmail-cli"
+    description: "CLI for Fastmail to manage emails, folders, and masked addresses"
+    license: "MIT"
+    install: |
+      bin.install "fastmail"
+    test: |
+      system "#{bin}/fastmail", "--help"
+
 release:
   github:
     owner: salmonumbrella
