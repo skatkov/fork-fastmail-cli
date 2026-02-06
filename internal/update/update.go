@@ -3,6 +3,7 @@ package update
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -50,7 +51,14 @@ func CheckForUpdate(ctx context.Context, currentVersion string) *CheckResult {
 	}
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil
 	}

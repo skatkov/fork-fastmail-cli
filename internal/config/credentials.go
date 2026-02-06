@@ -110,6 +110,7 @@ func SetPrimaryAccount(email string) error {
 	}
 
 	// Update all accounts - set primary only for the specified email
+	found := false
 	for _, k := range keys {
 		keyEmail, ok := parseTokenKey(k)
 		if !ok {
@@ -126,17 +127,27 @@ func SetPrimaryAccount(email string) error {
 			continue
 		}
 
-		st.IsPrimary = (keyEmail == email)
+		isTarget := keyEmail == email
+		if isTarget {
+			found = true
+		}
+		st.IsPrimary = isTarget
 
 		payload, err := json.Marshal(st)
 		if err != nil {
 			continue
 		}
 
-		_ = ring.Set(keyring.Item{ //nolint:errcheck // best-effort update
+		if setErr := ring.Set(keyring.Item{
 			Key:  k,
 			Data: payload,
-		})
+		}); setErr != nil && isTarget {
+			return fmt.Errorf("failed to set primary account: %w", setErr)
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("account not found: %s", email)
 	}
 
 	return nil
@@ -293,8 +304,9 @@ func ListAccounts() ([]string, error) {
 }
 
 // ListTokens returns all stored tokens with metadata.
-// SECURITY: Only returns email and metadata - tokens are never loaded into memory
-// unless explicitly needed via GetToken().
+// NOTE: The underlying keyring Get() call loads the full stored item (including the
+// API token) into memory during unmarshalling; however, the token is NOT included in
+// the returned Token structs. Use GetToken() to retrieve the actual API token.
 func ListTokens() ([]Token, error) {
 	ring, err := openKeyring()
 	if err != nil {

@@ -58,7 +58,10 @@ Examples:
 			}
 
 			// Validate email addresses (only those provided)
-			allAddrs := append(append(to, cc...), bcc...)
+			allAddrs := make([]string, 0, len(to)+len(cc)+len(bcc))
+			allAddrs = append(allAddrs, to...)
+			allAddrs = append(allAddrs, cc...)
+			allAddrs = append(allAddrs, bcc...)
 			for _, addr := range allAddrs {
 				if !validation.IsValidEmail(addr) {
 					return fmt.Errorf("invalid email address: %s", addr)

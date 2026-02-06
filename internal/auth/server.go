@@ -679,6 +679,11 @@ const setupPageHTML = `<!DOCTYPE html>
                 renderAccounts();
             }
         }
+        function escapeHTML(s) {
+            var d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
         function renderAccounts() {
             accountCount.textContent = accounts.length + ' account' + (accounts.length !== 1 ? 's' : '');
             if (accounts.length === 0) {
@@ -690,15 +695,17 @@ const setupPageHTML = `<!DOCTYPE html>
                 emptyState.classList.add('hidden');
                 setupCard.classList.add('hidden');
                 accountsList.innerHTML = accounts.map((acc) => {
-                    const initial = acc.email.charAt(0).toUpperCase();
+                    const safeEmail = escapeHTML(acc.email);
+                    const initial = escapeHTML(acc.email.charAt(0).toUpperCase());
                     const isPrimary = acc.isPrimary;
-                    return '<div class="account-card ' + (isPrimary ? 'primary' : '') + '" data-email="' + acc.email + '">' +
+                    const emailJSON = JSON.stringify(acc.email);
+                    return '<div class="account-card ' + (isPrimary ? 'primary' : '') + '" data-email="' + safeEmail + '">' +
                         '<div class="account-avatar">' + initial + '</div>' +
                         '<div class="account-info">' +
-                        '<span class="account-email">' + acc.email + '</span>' +
-                        (isPrimary ? '<span class="primary-badge"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Primary</span>' : '<button class="set-primary-btn" onclick="setPrimary(\'' + acc.email + '\')">Set as primary</button>') +
+                        '<span class="account-email">' + safeEmail + '</span>' +
+                        (isPrimary ? '<span class="primary-badge"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Primary</span>' : '<button class="set-primary-btn" onclick="setPrimary(' + emailJSON + ')">Set as primary</button>') +
                         '</div>' +
-                        '<button class="remove-btn" onclick="removeAccount(\'' + acc.email + '\')" title="Remove account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>' +
+                        '<button class="remove-btn" onclick="removeAccount(' + emailJSON + ')" title="Remove account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>' +
                         '</div>';
                 }).join('');
             }

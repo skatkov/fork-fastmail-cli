@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -274,16 +275,16 @@ func (c *Client) GetSession(ctx context.Context) (*Session, error) {
 		return nil, fmt.Errorf("decoding session response: %w", err)
 	}
 
-	// Extract the first account ID (Fastmail typically has one account)
-	var accountID string
+	// Extract the first account ID deterministically (Fastmail typically has one account)
+	accountIDs := make([]string, 0, len(sessionData.Accounts))
 	for id := range sessionData.Accounts {
-		accountID = id
-		break
+		accountIDs = append(accountIDs, id)
 	}
-
-	if accountID == "" {
+	if len(accountIDs) == 0 {
 		return nil, ErrNoAccounts
 	}
+	sort.Strings(accountIDs)
+	accountID := accountIDs[0]
 
 	// Build and cache session
 	c.session = &Session{

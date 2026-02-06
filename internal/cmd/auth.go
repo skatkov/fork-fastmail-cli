@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -232,7 +233,7 @@ func newAuthRemoveCmd(app *App) *cobra.Command {
 			}
 
 			if err := config.DeleteToken(email); err != nil {
-				if err == keyring.ErrKeyNotFound {
+				if errors.Is(err, keyring.ErrKeyNotFound) {
 					return fmt.Errorf("account not found: %s", email)
 				}
 				return fmt.Errorf("failed to remove account: %w", err)

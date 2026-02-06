@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 
 	"github.com/google/uuid"
 )
@@ -41,7 +42,7 @@ func NewSieveClient(token, cookie, sessionURL, apiURL string) *SieveClient {
 		cookie:     cookie,
 		sessionURL: sessionURL,
 		apiURL:     apiURL,
-		http:       &http.Client{},
+		http:       newSecureHTTPClient(),
 	}
 }
 
@@ -86,12 +87,16 @@ func (c *SieveClient) getAccountID(ctx context.Context) (string, error) {
 		return "", err
 	}
 
+	ids := make([]string, 0, len(session.Accounts))
 	for id := range session.Accounts {
-		c.accountID = id
-		return id, nil
+		ids = append(ids, id)
 	}
-
-	return "", fmt.Errorf("no accounts found in session")
+	if len(ids) == 0 {
+		return "", fmt.Errorf("no accounts found in session")
+	}
+	sort.Strings(ids)
+	c.accountID = ids[0]
+	return ids[0], nil
 }
 
 // GetSieveBlocks retrieves the current Sieve script blocks.
