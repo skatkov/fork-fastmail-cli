@@ -100,6 +100,61 @@ func TestExecute_JSONSuccess_DryRunCommandsAreSingleJSONDocument(t *testing.T) {
 	}
 }
 
+func TestExecute_TrackingStatus_JSONMode_IsSingleJSONDocument(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	stderr := captureStderr(t, func() {
+		stdout := captureStdout(t, func() {
+			if err := Execute([]string{"--output=json", "email", "track", "status"}); err != nil {
+				t.Fatalf("Execute returned error: %v", err)
+			}
+		})
+
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+			t.Fatalf("stdout is not valid JSON: %v; stdout=%q", err, stdout)
+		}
+		if _, ok := payload["configured"]; !ok {
+			t.Fatalf("expected configured field, got: %v", payload)
+		}
+	})
+
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got: %q", stderr)
+	}
+}
+
+func TestExecute_TrackingSetup_JSONMode_DoesNotPromptAndErrorsCleanly(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	var capturedStderr string
+	stdout := captureStdout(t, func() {
+		capturedStderr = captureStderr(t, func() {
+			err := Execute([]string{"--output=json", "email", "track", "setup"})
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+		})
+	})
+
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected empty stdout, got: %q", stdout)
+	}
+
+	var payload map[string]any
+	if unmarshalErr := json.Unmarshal([]byte(capturedStderr), &payload); unmarshalErr != nil {
+		t.Fatalf("stderr is not valid JSON: %v; stderr=%q", unmarshalErr, capturedStderr)
+	}
+	errObj, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected payload.error object, got: %T (%v)", payload["error"], payload["error"])
+	}
+	msg, _ := errObj["message"].(string)
+	if !strings.Contains(msg, "--worker-url is required") {
+		t.Fatalf("unexpected error.message: %q", msg)
+	}
+}
+
 func TestRootShortcutsExist(t *testing.T) {
 	app := NewApp()
 	root := NewRootCmd(app)

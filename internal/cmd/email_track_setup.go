@@ -14,12 +14,13 @@ import (
 
 func newEmailTrackSetupCmd(app *App) *cobra.Command {
 	var workerURL, trackingKey, adminKey string
+	var showSecrets bool
 
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Set up email tracking",
 		Long:  `Configure email open tracking with your Cloudflare Worker URL and keys.`,
-		RunE: runE(app, func(_ *cobra.Command, _ []string, _ *App) error {
+		RunE: runE(app, func(cmd *cobra.Command, _ []string, app *App) error {
 			cfg, err := tracking.LoadConfig()
 			if err != nil {
 				return fmt.Errorf("load tracking config: %w", err)
@@ -32,6 +33,9 @@ func newEmailTrackSetupCmd(app *App) *cobra.Command {
 
 			// Prompt for worker URL if not provided
 			if workerURL == "" {
+				if app.IsJSON(cmd.Context()) || (app.Flags != nil && app.Flags.Yes) {
+					return fmt.Errorf("--worker-url is required")
+				}
 				fmt.Print("Tracking worker base URL (e.g. https://...workers.dev): ")
 				reader := bufio.NewReader(os.Stdin)
 				line, readErr := reader.ReadString('\n')
@@ -86,6 +90,19 @@ func newEmailTrackSetupCmd(app *App) *cobra.Command {
 			}
 
 			path, _ := tracking.ConfigPath()
+			if app.IsJSON(cmd.Context()) {
+				out := map[string]any{
+					"configured": true,
+					"configPath": path,
+					"workerUrl":  cfg.WorkerURL,
+				}
+				if showSecrets {
+					out["trackingKey"] = key
+					out["adminKey"] = admin
+				}
+				return app.PrintJSON(cmd, out)
+			}
+
 			fmt.Printf("configured\ttrue\n")
 			if path != "" {
 				fmt.Printf("config_path\t%s\n", path)
@@ -107,6 +124,7 @@ func newEmailTrackSetupCmd(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&workerURL, "worker-url", "", "Tracking worker base URL")
 	cmd.Flags().StringVar(&trackingKey, "tracking-key", "", "Tracking key (base64; generates one if omitted)")
 	cmd.Flags().StringVar(&adminKey, "admin-key", "", "Admin key for /opens (generates one if omitted)")
+	cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, "Include generated secrets in JSON output (use with care)")
 
 	return cmd
 }

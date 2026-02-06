@@ -35,11 +35,11 @@ func newEmailTrackOpensCmd(app *App) *cobra.Command {
 
 			// Query by tracking ID
 			if len(args) > 0 && args[0] != "" {
-				return queryByTrackingID(cmd, cfg, args[0], app.IsJSON(cmd.Context()))
+				return queryByTrackingID(cmd, app, cfg, args[0])
 			}
 
 			// Query via admin endpoint
-			return queryAdmin(cmd, cfg, to, since, app.IsJSON(cmd.Context()))
+			return queryAdmin(cmd, app, cfg, to, since)
 		}),
 	}
 
@@ -49,7 +49,7 @@ func newEmailTrackOpensCmd(app *App) *cobra.Command {
 	return cmd
 }
 
-func queryByTrackingID(cmd *cobra.Command, cfg *tracking.Config, trackingID string, jsonOutput bool) error {
+func queryByTrackingID(cmd *cobra.Command, app *App, cfg *tracking.Config, trackingID string) error {
 	reqURL := fmt.Sprintf("%s/q/%s", cfg.WorkerURL, trackingID)
 
 	req, err := http.NewRequestWithContext(cmd.Context(), http.MethodGet, reqURL, nil)
@@ -73,9 +73,12 @@ func queryByTrackingID(cmd *cobra.Command, cfg *tracking.Config, trackingID stri
 		return fmt.Errorf("read response: %w", err)
 	}
 
-	if jsonOutput {
-		fmt.Println(string(body))
-		return nil
+	var anyBody any
+	if err := json.Unmarshal(body, &anyBody); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+	if app.IsJSON(cmd.Context()) {
+		return app.PrintJSON(cmd, anyBody)
 	}
 
 	var result struct {
@@ -94,9 +97,9 @@ func queryByTrackingID(cmd *cobra.Command, cfg *tracking.Config, trackingID stri
 		} `json:"first_human_open"`
 	}
 
-	if err := json.Unmarshal(body, &result); err != nil {
-		return fmt.Errorf("decode response: %w", err)
-	}
+	// Reuse the already-decoded body, but re-marshal to our struct for tab output.
+	body2, _ := json.Marshal(anyBody)
+	_ = json.Unmarshal(body2, &result)
 
 	fmt.Printf("tracking_id\t%s\n", result.TrackingID)
 	fmt.Printf("recipient\t%s\n", result.Recipient)
@@ -117,7 +120,7 @@ func queryByTrackingID(cmd *cobra.Command, cfg *tracking.Config, trackingID stri
 	return nil
 }
 
-func queryAdmin(cmd *cobra.Command, cfg *tracking.Config, to, since string, jsonOutput bool) error {
+func queryAdmin(cmd *cobra.Command, app *App, cfg *tracking.Config, to, since string) error {
 	if strings.TrimSpace(cfg.AdminKey) == "" {
 		return fmt.Errorf("tracking admin key not configured; run 'fastmail email track setup' again")
 	}
@@ -173,10 +176,8 @@ func queryAdmin(cmd *cobra.Command, cfg *tracking.Config, to, since string, json
 		return fmt.Errorf("decode response: %w", err)
 	}
 
-	if jsonOutput {
-		out, _ := json.MarshalIndent(result, "", "  ")
-		fmt.Println(string(out))
-		return nil
+	if app.IsJSON(cmd.Context()) {
+		return app.PrintJSON(cmd, result)
 	}
 
 	if len(result.Opens) == 0 {

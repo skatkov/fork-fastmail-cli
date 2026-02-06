@@ -67,6 +67,12 @@ To get these credentials:
 				if err := config.DeleteSieveCredentials(accountEmail); err != nil {
 					return fmt.Errorf("failed to remove sieve credentials: %w", err)
 				}
+				if app.IsJSON(cmd.Context()) {
+					return app.PrintJSON(cmd, map[string]any{
+						"status": "removed",
+						"email":  accountEmail,
+					})
+				}
 				fmt.Println("Sieve credentials removed")
 				return nil
 			}
@@ -89,6 +95,12 @@ To get these credentials:
 				return fmt.Errorf("failed to save sieve credentials: %w", err)
 			}
 
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
+					"status": "saved",
+					"email":  accountEmail,
+				})
+			}
 			fmt.Println("Sieve credentials saved successfully")
 			return nil
 		}),
