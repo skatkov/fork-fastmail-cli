@@ -213,6 +213,35 @@ func TestExecute_AuthAdd_JSONMode_DoesNotPromptForToken(t *testing.T) {
 	}
 }
 
+func TestExecute_SieveEdit_JSONMode_DoesNotSpawnEditor(t *testing.T) {
+	var capturedStderr string
+	stdout := captureStdout(t, func() {
+		capturedStderr = captureStderr(t, func() {
+			err := Execute([]string{"--output=json", "sieve", "edit", "--block", "start"})
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+		})
+	})
+
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected empty stdout, got: %q", stdout)
+	}
+
+	var payload map[string]any
+	if unmarshalErr := json.Unmarshal([]byte(capturedStderr), &payload); unmarshalErr != nil {
+		t.Fatalf("stderr is not valid JSON: %v; stderr=%q", unmarshalErr, capturedStderr)
+	}
+	errObj, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected payload.error object, got: %T (%v)", payload["error"], payload["error"])
+	}
+	msg, _ := errObj["message"].(string)
+	if !strings.Contains(msg, "interactive") {
+		t.Fatalf("unexpected error.message: %q", msg)
+	}
+}
+
 func TestRootShortcutsExist(t *testing.T) {
 	app := NewApp()
 	root := NewRootCmd(app)
