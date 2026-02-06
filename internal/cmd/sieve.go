@@ -294,6 +294,14 @@ func newSieveEditCmd(app *App) *cobra.Command {
 				return fmt.Errorf("--block must be: start, middle, or end")
 			}
 
+			// Editing is inherently interactive (spawns $EDITOR).
+			if app.IsJSON(cmd.Context()) || (app.Flags != nil && app.Flags.Yes) {
+				return Suggest(
+					fmt.Errorf("sieve edit is interactive"),
+					"Use 'fastmail sieve set --start-file/--middle-file/--end-file' for non-interactive updates",
+				)
+			}
+
 			client, err := app.SieveClient()
 			if err != nil {
 				return err
