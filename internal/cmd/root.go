@@ -171,4 +171,19 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+func envBool(key string, fallback bool) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if v == "" {
+		return fallback
+	}
+	switch v {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
 // outputModeKey and queryKey are context keys for output formatting.

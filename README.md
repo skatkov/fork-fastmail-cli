@@ -105,6 +105,11 @@ fastmail email list
 
 Use `--yes` / `-y` to skip confirmation prompts (useful for agents and scripting).
 
+Environment alternatives:
+- `FASTMAIL_YES=1`
+- `FASTMAIL_NON_INTERACTIVE=1`
+- `FASTMAIL_NO_INPUT=1`
+
 ## Security
 
 ### Credential Storage

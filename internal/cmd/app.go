@@ -31,6 +31,7 @@ func NewApp() *App {
 	flags := rootFlags{
 		Color:  envOr("FASTMAIL_COLOR", "auto"),
 		Output: envOr("FASTMAIL_OUTPUT", "text"),
+		Yes:    envBool("FASTMAIL_YES", false) || envBool("FASTMAIL_NO_INPUT", false) || envBool("FASTMAIL_NON_INTERACTIVE", false),
 	}
 	return &App{Flags: &flags}
 }
