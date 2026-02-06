@@ -62,6 +62,13 @@ func runAuthLogin(cmd *cobra.Command) error {
 	}
 
 	if result != nil && result.Email != "" {
+		if app := AppFromContext(cmd.Context()); app != nil && app.IsJSON(cmd.Context()) {
+			return app.PrintJSON(cmd, map[string]any{
+				"status": "configured",
+				"email":  result.Email,
+			})
+		}
+
 		fmt.Fprintf(os.Stderr, "\nSetup complete! Account %s is now configured.\n", result.Email)
 		fmt.Fprintf(os.Stderr, "Try: fastmail --account %s email list --limit 5\n", result.Email)
 	}

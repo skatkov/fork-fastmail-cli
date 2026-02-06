@@ -26,6 +26,7 @@ func newEmailDeleteCmd(app *App) *cobra.Command {
 
 			if app.IsJSON(cmd.Context()) {
 				return app.PrintJSON(cmd, map[string]any{
+					"status":  "deleted",
 					"deleted": args[0],
 				})
 			}
@@ -76,6 +77,7 @@ func newEmailBulkDeleteCmd(app *App) *cobra.Command {
 			// Handle JSON output
 			if app.IsJSON(cmd.Context()) {
 				output := map[string]any{
+					"status":    "deleted",
 					"succeeded": results.Succeeded,
 				}
 				if len(results.Failed) > 0 {
@@ -130,6 +132,7 @@ func newEmailMoveCmd(app *App) *cobra.Command {
 
 			if app.IsJSON(cmd.Context()) {
 				return app.PrintJSON(cmd, map[string]any{
+					"status":  "moved",
 					"moved":   args[0],
 					"mailbox": targetMailbox,
 				})
@@ -214,6 +217,7 @@ func newEmailBulkMoveCmd(app *App) *cobra.Command {
 			// Handle JSON output
 			if app.IsJSON(cmd.Context()) {
 				output := map[string]any{
+					"status":    "moved",
 					"mailbox":   mailboxName,
 					"succeeded": results.Succeeded,
 				}

@@ -138,6 +138,7 @@ func newMailboxDeleteCmd(app *App) *cobra.Command {
 
 			if app.IsJSON(cmd.Context()) {
 				return app.PrintJSON(cmd, map[string]any{
+					"status":  "deleted",
 					"deleted": mailboxID,
 				})
 			}
@@ -174,6 +175,7 @@ func newMailboxRenameCmd(app *App) *cobra.Command {
 
 			if app.IsJSON(cmd.Context()) {
 				return app.PrintJSON(cmd, map[string]any{
+					"status":    "renamed",
 					"mailboxId": mailboxID,
 					"newName":   args[1],
 				})

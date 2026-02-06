@@ -21,12 +21,14 @@ var (
 )
 
 type rootFlags struct {
-	Color   string
-	Account string
-	Output  string
-	Debug   bool
-	Query   string
-	Yes     bool
+	Color          string
+	Account        string
+	Output         string
+	Debug          bool
+	Query          string
+	Yes            bool
+	NoInput        bool
+	NonInteractive bool
 }
 
 type contextKey string
@@ -115,6 +117,11 @@ func NewRootCmd(app *App) *cobra.Command {
 			// Query filter
 			ctx = context.WithValue(ctx, queryKey, app.Flags.Query)
 
+			// Non-interactive aliases
+			if app.Flags.NoInput || app.Flags.NonInteractive {
+				app.Flags.Yes = true
+			}
+
 			// Logging
 			logger := logging.Setup(app.Flags.Debug)
 			ctx = logging.WithLogger(ctx, logger)
@@ -131,6 +138,10 @@ func NewRootCmd(app *App) *cobra.Command {
 	root.PersistentFlags().BoolVar(&app.Flags.Debug, "debug", false, "Enable debug logging")
 	root.PersistentFlags().StringVar(&app.Flags.Query, "query", "", "JQ filter expression for JSON output")
 	root.PersistentFlags().BoolVarP(&app.Flags.Yes, "yes", "y", false, "Skip confirmation prompts (non-interactive)")
+	root.PersistentFlags().BoolVar(&app.Flags.NoInput, "no-input", false, "Alias for --yes (non-interactive)")
+	root.PersistentFlags().BoolVar(&app.Flags.NonInteractive, "non-interactive", false, "Alias for --yes (non-interactive)")
+	_ = root.PersistentFlags().MarkHidden("no-input")
+	_ = root.PersistentFlags().MarkHidden("non-interactive")
 
 	root.AddCommand(newAuthCmd(app))
 	root.AddCommand(newEmailCmd(app))
