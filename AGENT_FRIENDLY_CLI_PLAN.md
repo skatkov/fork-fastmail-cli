@@ -59,8 +59,8 @@ Acceptance:
 
 ### 5. Tests (Interface-Level)
 
-- [ ] Add CLI-level tests for the desire paths and the JSON contract (stdout-only JSON).
-- [ ] Add a regression test for `email download --all` in JSON mode.
+- [x] Add CLI-level tests for the desire paths and the JSON contract (stdout-only JSON for error cases).
+- [x] Add a regression test for `email download --all` in JSON mode.
 
 ## Implementation Order
 

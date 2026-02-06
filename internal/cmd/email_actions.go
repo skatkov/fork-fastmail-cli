@@ -47,14 +47,14 @@ func newEmailBulkDeleteCmd(app *App) *cobra.Command {
 		Short:   "Delete multiple emails (move to trash)",
 		Args:    cobra.MinimumNArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
-			client, err := app.JMAPClient()
-			if err != nil {
-				return err
-			}
-
 			// Handle dry-run mode
 			if dryRun {
 				return printDryRunList(app, cmd, fmt.Sprintf("Would delete %d emails:", len(args)), "wouldDelete", args, nil)
+			}
+
+			client, err := app.JMAPClient()
+			if err != nil {
+				return err
 			}
 
 			// Prompt for confirmation unless --yes flag is set (global) or JSON output mode.
@@ -160,6 +160,13 @@ func newEmailBulkMoveCmd(app *App) *cobra.Command {
 				return fmt.Errorf("--to is required")
 			}
 
+			// Handle dry-run mode without requiring keyring / network.
+			if dryRun {
+				return printDryRunList(app, cmd, fmt.Sprintf("Would move %d emails to %s:", len(args), targetMailbox), "wouldMove", args, map[string]any{
+					"mailbox": targetMailbox,
+				})
+			}
+
 			client, err := app.JMAPClient()
 			if err != nil {
 				return err
@@ -186,13 +193,6 @@ func newEmailBulkMoveCmd(app *App) *cobra.Command {
 			}
 			if mailboxName == "" {
 				mailboxName = resolvedID
-			}
-
-			// Handle dry-run mode
-			if dryRun {
-				return printDryRunList(app, cmd, fmt.Sprintf("Would move %d emails to %s:", len(args), mailboxName), "wouldMove", args, map[string]any{
-					"mailbox": mailboxName,
-				})
 			}
 
 			// Prompt for confirmation unless --yes flag is set (global) or JSON output mode.
@@ -291,11 +291,6 @@ func newEmailBulkMarkReadCmd(app *App) *cobra.Command {
 		Short:   "Mark multiple emails as read/unread",
 		Args:    cobra.MinimumNArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
-			client, err := app.JMAPClient()
-			if err != nil {
-				return err
-			}
-
 			status := "read"
 			if unread {
 				status = "unread"
@@ -306,6 +301,11 @@ func newEmailBulkMarkReadCmd(app *App) *cobra.Command {
 				return printDryRunList(app, cmd, fmt.Sprintf("Would mark %d emails as %s:", len(args), status), "wouldMark", args, map[string]any{
 					"status": status,
 				})
+			}
+
+			client, err := app.JMAPClient()
+			if err != nil {
+				return err
 			}
 
 			// Mark emails using bulk API
