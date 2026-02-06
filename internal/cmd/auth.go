@@ -55,6 +55,15 @@ func newAuthCmd(app *App) *cobra.Command {
 }
 
 func runAuthLogin(cmd *cobra.Command) error {
+	if app := AppFromContext(cmd.Context()); app != nil {
+		if app.IsJSON(cmd.Context()) || (app.Flags != nil && app.Flags.Yes) {
+			return Suggest(
+				fmt.Errorf("auth login is interactive"),
+				"Use 'fastmail auth add <email>' with FASTMAIL_TOKEN (or --token) for non-interactive setup",
+			)
+		}
+	}
+
 	server := auth.NewSetupServer()
 	result, err := server.Start(cmd.Context())
 	if err != nil {
@@ -104,13 +113,22 @@ func newAuthAddCmd(app *App) *cobra.Command {
 
 			if tokenFlag != "" {
 				// Security warning: --token flag exposes token in shell history and process listings
-				fmt.Fprintln(os.Stderr, "Warning: Using --token flag exposes your token in shell history and process listings.")
-				fmt.Fprintln(os.Stderr, "Consider using FASTMAIL_TOKEN environment variable or interactive prompt instead.")
+				if !app.IsJSON(cmd.Context()) {
+					fmt.Fprintln(os.Stderr, "Warning: Using --token flag exposes your token in shell history and process listings.")
+					fmt.Fprintln(os.Stderr, "Consider using FASTMAIL_TOKEN environment variable or interactive prompt instead.")
+				}
 				token = strings.TrimSpace(tokenFlag)
 			} else if envToken := os.Getenv("FASTMAIL_TOKEN"); envToken != "" {
 				// Use token from environment variable (secure scripting method)
 				token = strings.TrimSpace(envToken)
 			} else {
+				if app.IsJSON(cmd.Context()) || (app.Flags != nil && app.Flags.Yes) {
+					return Suggest(
+						fmt.Errorf("FASTMAIL_TOKEN (or --token) is required in non-interactive mode"),
+						"Set FASTMAIL_TOKEN and re-run (or pass --token, but --token is less safe)",
+					)
+				}
+
 				// Prompt for API token securely
 				fmt.Fprintf(os.Stderr, "Enter API token for %s: ", email)
 				tokenBytes, err := term.ReadPassword(int(syscall.Stdin)) //nolint:unconvert // required for Windows where Stdin is uintptr
