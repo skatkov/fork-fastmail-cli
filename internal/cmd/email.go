@@ -4,8 +4,9 @@ import "github.com/spf13/cobra"
 
 func newEmailCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "email",
-		Short: "Email operations",
+		Use:     "email",
+		Aliases: []string{"emails", "mail", "messages", "msg"},
+		Short:   "Email operations",
 	}
 
 	cmd.AddCommand(newEmailListCmd(app))

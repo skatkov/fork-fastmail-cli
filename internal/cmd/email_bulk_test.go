@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestEmailBulkDeleteCmd_RequiresArgs(t *testing.T) {
@@ -72,7 +74,25 @@ func TestEmailBulkDeleteCmd_AcceptsMultipleArgs(t *testing.T) {
 // TestEmailBulkDeleteCmd_HasRequiredFlags verifies that the command has the expected flags
 func TestEmailBulkDeleteCmd_HasRequiredFlags(t *testing.T) {
 	app := newTestApp()
-	cmd := newEmailBulkDeleteCmd(app)
+	root := NewRootCmd(app)
+	emailCmd := root.Commands()[0]
+	for _, c := range root.Commands() {
+		if c.Name() == "email" {
+			emailCmd = c
+			break
+		}
+	}
+
+	var cmd *cobra.Command
+	for _, c := range emailCmd.Commands() {
+		if c.Name() == "bulk-delete" {
+			cmd = c
+			break
+		}
+	}
+	if cmd == nil {
+		t.Fatal("expected bulk-delete command to exist under email")
+	}
 
 	// Verify --dry-run flag exists
 	dryRunFlag := cmd.Flags().Lookup("dry-run")
@@ -80,14 +100,14 @@ func TestEmailBulkDeleteCmd_HasRequiredFlags(t *testing.T) {
 		t.Error("expected --dry-run flag to exist")
 	}
 
-	// Verify --yes flag exists
-	yesFlag := cmd.Flags().Lookup("yes")
+	// Verify --yes flag exists (inherited from root persistent flags)
+	yesFlag := cmd.InheritedFlags().Lookup("yes")
 	if yesFlag == nil {
 		t.Error("expected --yes flag to exist")
 	}
 
 	// Verify -y shorthand exists
-	yShortFlag := cmd.Flags().ShorthandLookup("y")
+	yShortFlag := cmd.InheritedFlags().ShorthandLookup("y")
 	if yShortFlag == nil {
 		t.Error("expected -y shorthand flag to exist")
 	}
@@ -215,7 +235,28 @@ func TestEmailBulkMoveCmd_AcceptsMultipleArgs(t *testing.T) {
 
 func TestEmailBulkMoveCmd_HasRequiredFlags(t *testing.T) {
 	app := newTestApp()
-	cmd := newEmailBulkMoveCmd(app)
+	root := NewRootCmd(app)
+	var emailCmd *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "email" {
+			emailCmd = c
+			break
+		}
+	}
+	if emailCmd == nil {
+		t.Fatal("expected email command to exist on root")
+	}
+
+	var cmd *cobra.Command
+	for _, c := range emailCmd.Commands() {
+		if c.Name() == "bulk-move" {
+			cmd = c
+			break
+		}
+	}
+	if cmd == nil {
+		t.Fatal("expected bulk-move command to exist under email")
+	}
 
 	// Verify --to flag exists
 	toFlag := cmd.Flags().Lookup("to")
@@ -229,14 +270,14 @@ func TestEmailBulkMoveCmd_HasRequiredFlags(t *testing.T) {
 		t.Error("expected --dry-run flag to exist")
 	}
 
-	// Verify --yes flag exists
-	yesFlag := cmd.Flags().Lookup("yes")
+	// Verify --yes flag exists (inherited from root persistent flags)
+	yesFlag := cmd.InheritedFlags().Lookup("yes")
 	if yesFlag == nil {
 		t.Error("expected --yes flag to exist")
 	}
 
 	// Verify -y shorthand exists
-	yShortFlag := cmd.Flags().ShorthandLookup("y")
+	yShortFlag := cmd.InheritedFlags().ShorthandLookup("y")
 	if yShortFlag == nil {
 		t.Error("expected -y shorthand flag to exist")
 	}

@@ -26,6 +26,7 @@ type rootFlags struct {
 	Output  string
 	Debug   bool
 	Query   string
+	Yes     bool
 }
 
 type contextKey string
@@ -37,7 +38,36 @@ const (
 
 func Execute(args []string) error {
 	app := NewApp()
+	root := NewRootCmd(app)
+	root.SetArgs(args)
 
+	err := root.Execute()
+	if err != nil {
+		if app.Flags.Output == "json" {
+			payload := map[string]any{
+				"error": map[string]any{
+					"message": err.Error(),
+				},
+			}
+			if cerrors.ContainsSuggestion(err) {
+				payload["error"].(map[string]any)["suggestion"] = cerrors.GetSuggestion(err)
+			}
+			_ = outfmt.WriteJSON(os.Stderr, payload)
+		} else {
+			// Print the main error
+			fmt.Fprintln(os.Stderr, "Error:", err)
+
+			// Print suggestion if available
+			if cerrors.ContainsSuggestion(err) {
+				fmt.Fprintln(os.Stderr, "")
+				fmt.Fprintln(os.Stderr, "Suggestion:", cerrors.GetSuggestion(err))
+			}
+		}
+	}
+	return err
+}
+
+func NewRootCmd(app *App) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "fastmail",
 		Short:         "Fastmail CLI for Email and Masked Email",
@@ -95,13 +125,12 @@ func Execute(args []string) error {
 			return nil
 		},
 	}
-
-	root.SetArgs(args)
 	root.PersistentFlags().StringVar(&app.Flags.Color, "color", app.Flags.Color, "Color output: auto|always|never")
 	root.PersistentFlags().StringVar(&app.Flags.Account, "account", envOr("FASTMAIL_ACCOUNT", ""), "Account email for API commands")
 	root.PersistentFlags().StringVar(&app.Flags.Output, "output", app.Flags.Output, "Output format: text|json")
 	root.PersistentFlags().BoolVar(&app.Flags.Debug, "debug", false, "Enable debug logging")
 	root.PersistentFlags().StringVar(&app.Flags.Query, "query", "", "JQ filter expression for JSON output")
+	root.PersistentFlags().BoolVarP(&app.Flags.Yes, "yes", "y", false, "Skip confirmation prompts (non-interactive)")
 
 	root.AddCommand(newAuthCmd(app))
 	root.AddCommand(newEmailCmd(app))
@@ -114,18 +143,14 @@ func Execute(args []string) error {
 	root.AddCommand(newSieveCmd(app))
 	root.AddCommand(newDraftCmd(app))
 
-	err := root.Execute()
-	if err != nil {
-		// Print the main error
-		fmt.Fprintln(os.Stderr, "Error:", err)
-
-		// Print suggestion if available
-		if cerrors.ContainsSuggestion(err) {
-			fmt.Fprintln(os.Stderr, "")
-			fmt.Fprintln(os.Stderr, "Suggestion:", cerrors.GetSuggestion(err))
-		}
-	}
-	return err
+	// Desire paths: top-level shortcuts for common email workflows.
+	root.AddCommand(newSearchShortcutCmd(app))
+	root.AddCommand(newListShortcutCmd(app))
+	root.AddCommand(newGetShortcutCmd(app))
+	root.AddCommand(newSendShortcutCmd(app))
+	root.AddCommand(newThreadShortcutCmd(app))
+	root.AddCommand(newMailboxesShortcutCmd(app))
+	return root
 }
 
 func envOr(key, fallback string) string {

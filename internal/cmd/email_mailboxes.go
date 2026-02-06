@@ -13,8 +13,9 @@ import (
 
 func newEmailMailboxesCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "mailboxes",
-		Short: "List mailboxes (folders)",
+		Use:     "mailboxes",
+		Aliases: []string{"folders"},
+		Short:   "List mailboxes (folders)",
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -88,8 +89,6 @@ func newMailboxCreateCmd(app *App) *cobra.Command {
 }
 
 func newMailboxDeleteCmd(app *App) *cobra.Command {
-	var yesFlag bool
-
 	cmd := &cobra.Command{
 		Use:   "mailbox-delete <mailbox-id-or-name>",
 		Short: "Delete a mailbox (folder)",
@@ -123,12 +122,13 @@ func newMailboxDeleteCmd(app *App) *cobra.Command {
 			}
 
 			// Prompt for confirmation unless --yes flag is set or JSON output mode
-			confirmed, err := app.Confirm(cmd, yesFlag, fmt.Sprintf("Delete mailbox '%s' (ID: %s)? [y/N] ", mailboxName, mailboxID), "y", "yes")
+			confirmed, err := app.Confirm(cmd, false, fmt.Sprintf("Delete mailbox '%s' (ID: %s)? [y/N] ", mailboxName, mailboxID), "y", "yes")
 			if err != nil {
 				return err
 			}
 			if !confirmed {
-				return fmt.Errorf("cancelled")
+				printCancelled()
+				return nil
 			}
 
 			err = client.DeleteMailbox(cmd.Context(), mailboxID)
@@ -146,8 +146,6 @@ func newMailboxDeleteCmd(app *App) *cobra.Command {
 			return nil
 		}),
 	}
-
-	cmd.Flags().BoolVarP(&yesFlag, "yes", "y", false, "Skip confirmation prompt")
 
 	return cmd
 }

@@ -10,9 +10,10 @@ import (
 
 func newEmailGetCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "get <emailId>",
-		Short: "Get email by ID",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get <emailId>",
+		Aliases: []string{"show", "cat"},
+		Short:   "Get email by ID",
+		Args:    cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {

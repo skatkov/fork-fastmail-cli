@@ -36,8 +36,10 @@ func TestDraftSendFlags(t *testing.T) {
 	app := newTestApp()
 	cmd := newDraftSendCmd(app)
 
-	if cmd.Flags().Lookup("yes") == nil {
-		t.Error("expected --yes flag")
+	// --yes is a global persistent flag (defined on the root command).
+	// Subcommands should not define it locally (it would shadow the persistent flag).
+	if cmd.Flags().Lookup("yes") != nil {
+		t.Error("did not expect a local --yes flag (it should be inherited from root)")
 	}
 }
 
@@ -45,7 +47,7 @@ func TestDraftDeleteFlags(t *testing.T) {
 	app := newTestApp()
 	cmd := newDraftDeleteCmd(app)
 
-	if cmd.Flags().Lookup("yes") == nil {
-		t.Error("expected --yes flag")
+	if cmd.Flags().Lookup("yes") != nil {
+		t.Error("did not expect a local --yes flag (it should be inherited from root)")
 	}
 }

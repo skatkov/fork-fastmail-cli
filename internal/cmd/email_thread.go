@@ -10,9 +10,10 @@ import (
 
 func newEmailThreadCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "thread <threadId>",
-		Short: "Get all emails in a thread",
-		Args:  cobra.ExactArgs(1),
+		Use:     "thread <threadId>",
+		Aliases: []string{"t"},
+		Short:   "Get all emails in a thread",
+		Args:    cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {

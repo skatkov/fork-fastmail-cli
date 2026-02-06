@@ -64,7 +64,8 @@ Choose one of two methods:
 
 **Browser:**
 ```bash
-fastmail auth login
+fastmail auth
+# (or: fastmail auth login)
 ```
 
 **Terminal:**
@@ -99,6 +100,10 @@ fastmail email list
 - `FASTMAIL_ACCOUNT` - Default account email to use
 - `FASTMAIL_OUTPUT` - Output format: `text` (default) or `json`
 - `FASTMAIL_COLOR` - Color mode: `auto` (default), `always`, or `never`
+
+### Non-Interactive Mode
+
+Use `--yes` / `-y` to skip confirmation prompts (useful for agents and scripting).
 
 ## Security
 

@@ -16,8 +16,9 @@ func newEmailListCmd(app *App) *cobra.Command {
 	var mailboxID string
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List emails",
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List emails",
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -95,8 +96,9 @@ func newEmailSearchCmd(app *App) *cobra.Command {
 	var snippets bool
 
 	cmd := &cobra.Command{
-		Use:   "search <query>",
-		Short: "Search emails",
+		Use:     "search <query>",
+		Aliases: []string{"find", "s"},
+		Short:   "Search emails",
 		Long: `Search emails using JMAP query syntax.
 
 Examples:

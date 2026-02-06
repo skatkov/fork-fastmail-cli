@@ -24,8 +24,9 @@ func newEmailSendCmd(app *App) *cobra.Command {
 	var track bool
 
 	cmd := &cobra.Command{
-		Use:   "send",
-		Short: "Send an email",
+		Use:     "send",
+		Aliases: []string{"compose", "new"},
+		Short:   "Send an email",
 		Long: `Send an email with optional attachments.
 
 The --from flag accepts both identities and masked email addresses. When replying

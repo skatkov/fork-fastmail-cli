@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -20,8 +19,9 @@ import (
 
 func newCalendarCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "calendar",
-		Short: "Calendar management operations",
+		Use:     "calendar",
+		Aliases: []string{"cal", "calendars"},
+		Short:   "Calendar management operations",
 		Long: `Manage Fastmail calendars and events.
 
 Note: Fastmail may use CalDAV instead of JMAP for calendars.
@@ -449,8 +449,6 @@ Only the fields you specify will be updated.`,
 }
 
 func newCalendarEventDeleteCmd(app *App) *cobra.Command {
-	var yes bool
-
 	cmd := &cobra.Command{
 		Use:   "event-delete <eventId>",
 		Short: "Delete a calendar event",
@@ -459,12 +457,13 @@ func newCalendarEventDeleteCmd(app *App) *cobra.Command {
   fastmail calendar event-delete <id> -y`,
 		Args: cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
-			if !yes {
-				confirmed, err := confirmPrompt(os.Stdout, "Are you sure you want to delete this event? (y/N): ", "y")
-				if err != nil || !confirmed {
-					printCancelled()
-					return nil
-				}
+			confirmed, err := app.Confirm(cmd, false, "Are you sure you want to delete this event? [y/N] ", "y", "yes")
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				printCancelled()
+				return nil
 			}
 
 			client, err := app.JMAPClient()
@@ -476,12 +475,17 @@ func newCalendarEventDeleteCmd(app *App) *cobra.Command {
 				return fmt.Errorf("failed to delete event: %w", err)
 			}
 
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
+					"deleted": args[0],
+					"status":  "deleted",
+				})
+			}
+
 			fmt.Println("Event deleted")
 			return nil
 		}),
 	}
-
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
 
 	return cmd
 }

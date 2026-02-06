@@ -16,8 +16,9 @@ func newEmailForwardCmd(app *App) *cobra.Command {
 	var body string
 
 	cmd := &cobra.Command{
-		Use:   "forward <emailId>",
-		Short: "Forward an email",
+		Use:     "forward <emailId>",
+		Aliases: []string{"fwd"},
+		Short:   "Forward an email",
 		Long: `Forward an email to one or more recipients.
 
 By default, if the original email was received on a masked email address, the

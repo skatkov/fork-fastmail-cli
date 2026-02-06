@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -13,8 +12,9 @@ import (
 
 func newContactsCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "contacts",
-		Short: "Contacts management operations",
+		Use:     "contacts",
+		Aliases: []string{"contact"},
+		Short:   "Contacts management operations",
 		Long: `Manage Fastmail contacts and address books.
 
 Note: Fastmail may use CardDAV instead of JMAP for contacts.
@@ -345,8 +345,6 @@ Only the fields you specify will be updated.`,
 }
 
 func newContactsDeleteCmd(app *App) *cobra.Command {
-	var yes bool
-
 	cmd := &cobra.Command{
 		Use:   "delete <contactId>",
 		Short: "Delete a contact",
@@ -355,12 +353,13 @@ func newContactsDeleteCmd(app *App) *cobra.Command {
   fastmail contacts delete <id> -y`,
 		Args: cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
-			if !yes {
-				confirmed, err := confirmPrompt(os.Stdout, "Are you sure you want to delete this contact? (y/N): ", "y")
-				if err != nil || !confirmed {
-					printCancelled()
-					return nil
-				}
+			confirmed, err := app.Confirm(cmd, false, "Are you sure you want to delete this contact? [y/N] ", "y", "yes")
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				printCancelled()
+				return nil
 			}
 
 			client, err := app.JMAPClient()
@@ -372,12 +371,17 @@ func newContactsDeleteCmd(app *App) *cobra.Command {
 				return fmt.Errorf("failed to delete contact: %w", err)
 			}
 
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
+					"deleted": args[0],
+					"status":  "deleted",
+				})
+			}
+
 			fmt.Println("Contact deleted")
 			return nil
 		}),
 	}
-
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
 
 	return cmd
 }

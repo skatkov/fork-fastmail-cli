@@ -9,9 +9,10 @@ import (
 
 func newEmailDeleteCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "delete <emailId>",
-		Short: "Delete email (move to trash)",
-		Args:  cobra.ExactArgs(1),
+		Use:     "delete <emailId>",
+		Aliases: []string{"rm", "trash"},
+		Short:   "Delete email (move to trash)",
+		Args:    cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -39,12 +40,12 @@ func newEmailDeleteCmd(app *App) *cobra.Command {
 
 func newEmailBulkDeleteCmd(app *App) *cobra.Command {
 	var dryRun bool
-	var yesFlag bool
 
 	cmd := &cobra.Command{
-		Use:   "bulk-delete <emailId>...",
-		Short: "Delete multiple emails (move to trash)",
-		Args:  cobra.MinimumNArgs(1),
+		Use:     "bulk-delete <emailId>...",
+		Aliases: []string{"bulk-rm", "rm-many"},
+		Short:   "Delete multiple emails (move to trash)",
+		Args:    cobra.MinimumNArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -56,13 +57,14 @@ func newEmailBulkDeleteCmd(app *App) *cobra.Command {
 				return printDryRunList(app, cmd, fmt.Sprintf("Would delete %d emails:", len(args)), "wouldDelete", args, nil)
 			}
 
-			// Prompt for confirmation unless --yes flag is set or JSON output mode
-			confirmed, err := app.Confirm(cmd, yesFlag, fmt.Sprintf("Delete %d emails? [y/N] ", len(args)), "y", "yes")
+			// Prompt for confirmation unless --yes flag is set (global) or JSON output mode.
+			confirmed, err := app.Confirm(cmd, false, fmt.Sprintf("Delete %d emails? [y/N] ", len(args)), "y", "yes")
 			if err != nil {
 				return err
 			}
 			if !confirmed {
-				return fmt.Errorf("cancelled")
+				printCancelled()
+				return nil
 			}
 
 			// Delete emails using bulk API
@@ -92,7 +94,6 @@ func newEmailBulkDeleteCmd(app *App) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be deleted without making changes")
-	cmd.Flags().BoolVarP(&yesFlag, "yes", "y", false, "Skip confirmation prompt")
 
 	return cmd
 }
@@ -101,9 +102,10 @@ func newEmailMoveCmd(app *App) *cobra.Command {
 	var targetMailbox string
 
 	cmd := &cobra.Command{
-		Use:   "move <emailId>",
-		Short: "Move email to mailbox",
-		Args:  cobra.ExactArgs(1),
+		Use:     "move <emailId>",
+		Aliases: []string{"mv"},
+		Short:   "Move email to mailbox",
+		Args:    cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -146,12 +148,12 @@ func newEmailMoveCmd(app *App) *cobra.Command {
 func newEmailBulkMoveCmd(app *App) *cobra.Command {
 	var targetMailbox string
 	var dryRun bool
-	var yesFlag bool
 
 	cmd := &cobra.Command{
-		Use:   "bulk-move <emailId>...",
-		Short: "Move multiple emails to a mailbox",
-		Args:  cobra.MinimumNArgs(1),
+		Use:     "bulk-move <emailId>...",
+		Aliases: []string{"bulk-mv"},
+		Short:   "Move multiple emails to a mailbox",
+		Args:    cobra.MinimumNArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			// Validate required flags before accessing keyring
 			if targetMailbox == "" {
@@ -193,13 +195,14 @@ func newEmailBulkMoveCmd(app *App) *cobra.Command {
 				})
 			}
 
-			// Prompt for confirmation unless --yes flag is set or JSON output mode
-			confirmed, err := app.Confirm(cmd, yesFlag, fmt.Sprintf("Move %d emails to %s? [y/N] ", len(args), mailboxName), "y", "yes")
+			// Prompt for confirmation unless --yes flag is set (global) or JSON output mode.
+			confirmed, err := app.Confirm(cmd, false, fmt.Sprintf("Move %d emails to %s? [y/N] ", len(args), mailboxName), "y", "yes")
 			if err != nil {
 				return err
 			}
 			if !confirmed {
-				return fmt.Errorf("cancelled")
+				printCancelled()
+				return nil
 			}
 
 			// Move emails using bulk API
@@ -233,7 +236,6 @@ func newEmailBulkMoveCmd(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&targetMailbox, "mailbox", "", "Target mailbox ID or name (alias for --to)")
 	_ = cmd.Flags().MarkHidden("mailbox") // Hidden alias for agent compatibility
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be moved without making changes")
-	cmd.Flags().BoolVarP(&yesFlag, "yes", "y", false, "Skip confirmation prompt")
 
 	return cmd
 }
@@ -242,9 +244,10 @@ func newEmailMarkReadCmd(app *App) *cobra.Command {
 	var unread bool
 
 	cmd := &cobra.Command{
-		Use:   "mark-read <emailId>",
-		Short: "Mark email as read/unread",
-		Args:  cobra.ExactArgs(1),
+		Use:     "mark-read <emailId>",
+		Aliases: []string{"read", "seen", "mark-seen"},
+		Short:   "Mark email as read/unread",
+		Args:    cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -283,9 +286,10 @@ func newEmailBulkMarkReadCmd(app *App) *cobra.Command {
 	var dryRun bool
 
 	cmd := &cobra.Command{
-		Use:   "bulk-mark-read <emailId>...",
-		Short: "Mark multiple emails as read/unread",
-		Args:  cobra.MinimumNArgs(1),
+		Use:     "bulk-mark-read <emailId>...",
+		Aliases: []string{"bulk-read", "bulk-seen"},
+		Short:   "Mark multiple emails as read/unread",
+		Args:    cobra.MinimumNArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {

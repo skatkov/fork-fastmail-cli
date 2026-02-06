@@ -14,9 +14,10 @@ import (
 
 func newEmailAttachmentsCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "attachments <emailId>",
-		Short: "List attachments for an email",
-		Args:  cobra.ExactArgs(1),
+		Use:     "attachments <emailId>",
+		Aliases: []string{"att"},
+		Short:   "List attachments for an email",
+		Args:    cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -64,8 +65,9 @@ func newEmailDownloadCmd(app *App) *cobra.Command {
 	var outputDir string
 
 	cmd := &cobra.Command{
-		Use:   "download <emailId> [blobId] [output-file]",
-		Short: "Download email attachment(s)",
+		Use:     "download <emailId> [blobId] [output-file]",
+		Aliases: []string{"dl"},
+		Short:   "Download email attachment(s)",
 		Long: `Download email attachments.
 
 With --all flag: Download all attachments from an email.
@@ -163,6 +165,15 @@ func downloadAllAttachments(cmd *cobra.Command, client jmap.EmailService, app *A
 	}
 
 	if len(attachments) == 0 {
+		if app.IsJSON(cmd.Context()) {
+			return app.PrintJSON(cmd, map[string]any{
+				"emailId":     emailID,
+				"attachments": []map[string]any{},
+				"skipped":     []map[string]any{},
+				"errors":      []map[string]any{},
+				"total":       0,
+			})
+		}
 		fmt.Println("No attachments to download")
 		return nil
 	}
@@ -175,6 +186,8 @@ func downloadAllAttachments(cmd *cobra.Command, client jmap.EmailService, app *A
 	}
 
 	var results []map[string]any
+	var skipped []map[string]any
+	var errors []map[string]any
 	for _, att := range attachments {
 		outputFile := format.SanitizeFilename(att.Name)
 		if outputFile == "" {
@@ -187,14 +200,32 @@ func downloadAllAttachments(cmd *cobra.Command, client jmap.EmailService, app *A
 
 		// Check if file exists
 		if _, statErr := os.Stat(outputFile); statErr == nil {
-			fmt.Printf("Skipping %s (already exists)\n", outputFile)
+			if app.IsJSON(cmd.Context()) {
+				skipped = append(skipped, map[string]any{
+					"blobId":     att.BlobID,
+					"name":       att.Name,
+					"outputFile": outputFile,
+					"reason":     "already_exists",
+				})
+			} else {
+				fmt.Printf("Skipping %s (already exists)\n", outputFile)
+			}
 			continue
 		}
 
 		// Download the blob
 		reader, err := client.DownloadBlob(cmd.Context(), att.BlobID)
 		if err != nil {
-			fmt.Printf("Error downloading %s: %v\n", att.Name, err)
+			if app.IsJSON(cmd.Context()) {
+				errors = append(errors, map[string]any{
+					"blobId": att.BlobID,
+					"name":   att.Name,
+					"step":   "download",
+					"error":  err.Error(),
+				})
+			} else {
+				fmt.Printf("Error downloading %s: %v\n", att.Name, err)
+			}
 			continue
 		}
 
@@ -202,7 +233,17 @@ func downloadAllAttachments(cmd *cobra.Command, client jmap.EmailService, app *A
 		outFile, err := os.Create(outputFile)
 		if err != nil {
 			reader.Close()
-			fmt.Printf("Error creating file %s: %v\n", outputFile, err)
+			if app.IsJSON(cmd.Context()) {
+				errors = append(errors, map[string]any{
+					"blobId":     att.BlobID,
+					"name":       att.Name,
+					"outputFile": outputFile,
+					"step":       "create_file",
+					"error":      err.Error(),
+				})
+			} else {
+				fmt.Printf("Error creating file %s: %v\n", outputFile, err)
+			}
 			continue
 		}
 
@@ -212,7 +253,17 @@ func downloadAllAttachments(cmd *cobra.Command, client jmap.EmailService, app *A
 		outFile.Close()
 
 		if err != nil {
-			fmt.Printf("Error writing %s: %v\n", outputFile, err)
+			if app.IsJSON(cmd.Context()) {
+				errors = append(errors, map[string]any{
+					"blobId":     att.BlobID,
+					"name":       att.Name,
+					"outputFile": outputFile,
+					"step":       "write_file",
+					"error":      err.Error(),
+				})
+			} else {
+				fmt.Printf("Error writing %s: %v\n", outputFile, err)
+			}
 			continue
 		}
 
@@ -232,6 +283,8 @@ func downloadAllAttachments(cmd *cobra.Command, client jmap.EmailService, app *A
 		return app.PrintJSON(cmd, map[string]any{
 			"emailId":     emailID,
 			"attachments": results,
+			"skipped":     skipped,
+			"errors":      errors,
 			"total":       len(results),
 		})
 	}

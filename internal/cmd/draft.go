@@ -196,12 +196,13 @@ Examples:
 }
 
 func newDraftSendCmd(app *App) *cobra.Command {
-	var yes bool
-
 	cmd := &cobra.Command{
 		Use:   "send <draft-id>",
 		Short: "Send a draft email",
-		Args:  cobra.ExactArgs(1),
+		Aliases: []string{
+			"submit",
+		},
+		Args: cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -216,22 +217,22 @@ func newDraftSendCmd(app *App) *cobra.Command {
 				return fmt.Errorf("failed to get draft: %w", err)
 			}
 
-			// Confirm before sending
-			if !yes && !app.IsJSON(cmd.Context()) {
+			// Confirm before sending. Only print details in interactive mode.
+			if !app.IsJSON(cmd.Context()) && (app.Flags == nil || !app.Flags.Yes) {
 				toAddrs := make([]string, len(draft.To))
 				for i, addr := range draft.To {
 					toAddrs[i] = addr.Email
 				}
 				fmt.Printf("Subject: %s\n", draft.Subject)
 				fmt.Printf("To: %v\n", toAddrs)
-				confirmed, confirmErr := app.Confirm(cmd, false, "Send this draft?", "y", "yes")
-				if confirmErr != nil {
-					return confirmErr
-				}
-				if !confirmed {
-					fmt.Println("Cancelled")
-					return nil
-				}
+			}
+			confirmed, confirmErr := app.Confirm(cmd, false, "Send this draft? [y/N] ", "y", "yes")
+			if confirmErr != nil {
+				return confirmErr
+			}
+			if !confirmed {
+				fmt.Println("Cancelled")
+				return nil
 			}
 
 			submissionID, err := client.SendDraft(cmd.Context(), draftID)
@@ -254,18 +255,18 @@ func newDraftSendCmd(app *App) *cobra.Command {
 		}),
 	}
 
-	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
-
 	return cmd
 }
 
 func newDraftDeleteCmd(app *App) *cobra.Command {
-	var yes bool
-
 	cmd := &cobra.Command{
 		Use:   "delete <draft-id>",
 		Short: "Delete a draft email",
-		Args:  cobra.ExactArgs(1),
+		Aliases: []string{
+			"rm",
+			"remove",
+		},
+		Args: cobra.ExactArgs(1),
 		RunE: runE(app, func(cmd *cobra.Command, args []string, app *App) error {
 			client, err := app.JMAPClient()
 			if err != nil {
@@ -274,16 +275,13 @@ func newDraftDeleteCmd(app *App) *cobra.Command {
 
 			draftID := args[0]
 
-			// Confirm before deleting
-			if !yes && !app.IsJSON(cmd.Context()) {
-				confirmed, err := app.Confirm(cmd, false, "Delete this draft?", "y", "yes")
-				if err != nil {
-					return err
-				}
-				if !confirmed {
-					fmt.Println("Cancelled")
-					return nil
-				}
+			confirmed, err := app.Confirm(cmd, false, "Delete this draft? [y/N] ", "y", "yes")
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				fmt.Println("Cancelled")
+				return nil
 			}
 
 			// DeleteEmail moves to trash
@@ -302,8 +300,6 @@ func newDraftDeleteCmd(app *App) *cobra.Command {
 			return nil
 		}),
 	}
-
-	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 
 	return cmd
 }

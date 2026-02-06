@@ -16,8 +16,9 @@ import (
 
 func newFilesCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "files",
-		Short: "File storage operations",
+		Use:     "files",
+		Aliases: []string{"file"},
+		Short:   "File storage operations",
 		Long: `Manage files in Fastmail file storage using WebDAV.
 
 Files are stored at https://myfiles.fastmail.com/ and can be accessed
@@ -154,10 +155,20 @@ with the same name as the local file.`,
 				return fmt.Errorf("local file not found: %w", err)
 			}
 
-			fmt.Fprintf(os.Stderr, "Uploading %s to %s...\n", localPath, remotePath)
+			if !app.IsJSON(cmd.Context()) {
+				fmt.Fprintf(os.Stderr, "Uploading %s to %s...\n", localPath, remotePath)
+			}
 
 			if err := client.Upload(cmd.Context(), localPath, remotePath); err != nil {
 				return fmt.Errorf("upload failed: %w", err)
+			}
+
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
+					"status":     "uploaded",
+					"localPath":  localPath,
+					"remotePath": remotePath,
+				})
 			}
 
 			fmt.Fprintln(os.Stderr, "File uploaded successfully")
@@ -199,10 +210,20 @@ directory with the same name as the remote file.`,
 				localPath = filepath.Join(localPath, filepath.Base(remotePath))
 			}
 
-			fmt.Fprintf(os.Stderr, "Downloading %s to %s...\n", remotePath, localPath)
+			if !app.IsJSON(cmd.Context()) {
+				fmt.Fprintf(os.Stderr, "Downloading %s to %s...\n", remotePath, localPath)
+			}
 
 			if err := client.Download(cmd.Context(), remotePath, localPath); err != nil {
 				return fmt.Errorf("download failed: %w", err)
+			}
+
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
+					"status":     "downloaded",
+					"remotePath": remotePath,
+					"localPath":  localPath,
+				})
 			}
 
 			fmt.Fprintln(os.Stderr, "File downloaded successfully")
@@ -234,6 +255,13 @@ func newFilesMkdirCmd(app *App) *cobra.Command {
 				return fmt.Errorf("mkdir failed: %w", err)
 			}
 
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
+					"status": "created",
+					"path":   dirPath,
+				})
+			}
+
 			fmt.Fprintf(os.Stderr, "Directory created: %s\n", dirPath)
 
 			return nil
@@ -244,8 +272,6 @@ func newFilesMkdirCmd(app *App) *cobra.Command {
 }
 
 func newFilesDeleteCmd(app *App) *cobra.Command {
-	var skipConfirmation bool
-
 	cmd := &cobra.Command{
 		Use:   "delete <path>",
 		Short: "Delete a file or directory",
@@ -263,20 +289,24 @@ WARNING: This operation cannot be undone. Use with caution.`,
 
 			path := args[0]
 
-			// Confirm deletion unless -y flag is provided
-			if !skipConfirmation {
-				confirmed, err := confirmPrompt(os.Stdout, fmt.Sprintf("Are you sure you want to delete %s? (yes/no): ", path), "yes", "y")
-				if err != nil {
-					return err
-				}
-				if !confirmed {
-					fmt.Fprintln(os.Stderr, "Delete cancelled")
-					return nil
-				}
+			confirmed, err := app.Confirm(cmd, false, fmt.Sprintf("Are you sure you want to delete %s? [y/N] ", path), "y", "yes")
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				printCancelled()
+				return nil
 			}
 
 			if err := client.Delete(cmd.Context(), path); err != nil {
 				return fmt.Errorf("delete failed: %w", err)
+			}
+
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
+					"deleted": path,
+					"status":  "deleted",
+				})
 			}
 
 			fmt.Fprintf(os.Stderr, "Deleted: %s\n", path)
@@ -284,8 +314,6 @@ WARNING: This operation cannot be undone. Use with caution.`,
 			return nil
 		}),
 	}
-
-	cmd.Flags().BoolVarP(&skipConfirmation, "yes", "y", false, "Skip confirmation prompt")
 
 	return cmd
 }
@@ -312,6 +340,14 @@ This operation will fail if the destination already exists.`,
 
 			if err := client.Move(cmd.Context(), source, destination); err != nil {
 				return fmt.Errorf("move failed: %w", err)
+			}
+
+			if app.IsJSON(cmd.Context()) {
+				return app.PrintJSON(cmd, map[string]any{
+					"status":      "moved",
+					"source":      source,
+					"destination": destination,
+				})
 			}
 
 			fmt.Fprintf(os.Stderr, "Moved: %s -> %s\n", source, destination)

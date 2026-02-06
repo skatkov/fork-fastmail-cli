@@ -38,6 +38,11 @@ func newAuthCmd(app *App) *cobra.Command {
 		Use:   "auth",
 		Short: "Authentication and account management",
 		Long:  `Manage Fastmail accounts and API tokens.`,
+		Args:  cobra.NoArgs,
+		RunE: runE(app, func(cmd *cobra.Command, _ []string, _ *App) error {
+			// Desire path: `fastmail auth` should perform the recommended login flow.
+			return runAuthLogin(cmd)
+		}),
 	}
 
 	cmd.AddCommand(newAuthLoginCmd(app))
@@ -49,6 +54,20 @@ func newAuthCmd(app *App) *cobra.Command {
 	return cmd
 }
 
+func runAuthLogin(cmd *cobra.Command) error {
+	server := auth.NewSetupServer()
+	result, err := server.Start(cmd.Context())
+	if err != nil {
+		return fmt.Errorf("setup failed: %w", err)
+	}
+
+	if result != nil && result.Email != "" {
+		fmt.Fprintf(os.Stderr, "\nSetup complete! Account %s is now configured.\n", result.Email)
+		fmt.Fprintf(os.Stderr, "Try: fastmail --account %s email list --limit 5\n", result.Email)
+	}
+	return nil
+}
+
 func newAuthLoginCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "login",
@@ -56,17 +75,7 @@ func newAuthLoginCmd(app *App) *cobra.Command {
 		Long:  `Opens a browser window for interactive authentication setup.`,
 		Args:  cobra.NoArgs,
 		RunE: runE(app, func(cmd *cobra.Command, _ []string, _ *App) error {
-			server := auth.NewSetupServer()
-			result, err := server.Start(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("setup failed: %w", err)
-			}
-
-			if result != nil && result.Email != "" {
-				fmt.Fprintf(os.Stderr, "\nSetup complete! Account %s is now configured.\n", result.Email)
-				fmt.Fprintf(os.Stderr, "Try: fastmail --account %s email list --limit 5\n", result.Email)
-			}
-			return nil
+			return runAuthLogin(cmd)
 		}),
 	}
 }

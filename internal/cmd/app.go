@@ -74,7 +74,7 @@ func (a *App) PrintJSON(cmd *cobra.Command, v any) error {
 }
 
 func (a *App) Confirm(cmd *cobra.Command, skip bool, prompt string, accepted ...string) (bool, error) {
-	if skip || a.IsJSON(cmd.Context()) {
+	if skip || a.IsJSON(cmd.Context()) || (a.Flags != nil && a.Flags.Yes) {
 		return true, nil
 	}
 	return confirmPrompt(os.Stderr, prompt, accepted...)
